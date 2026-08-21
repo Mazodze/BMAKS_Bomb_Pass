@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BMAKS Bomb Pass</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <section id="home" class="screen active">
+    <div class="hero">
+      <div class="bomb">💣</div>
+      <div class="brand">BMAKS</div>
+      <h1>BOMB PASS</h1>
+      <p>Answer fast. Pass the bomb. Be the last one standing.</p>
+    </div>
+    <div class="panel home-panel">
+      <input id="name" maxlength="20" placeholder="Enter your name" autocomplete="off">
+      <button id="create" class="red">CREATE ROOM</button>
+      <div class="or">OR</div>
+      <input id="code" maxlength="4" placeholder="ROOM CODE" autocomplete="off">
+      <button id="join" class="dark">JOIN ROOM</button>
+      <div id="homeError" class="error"></div>
+    </div>
+  </section>
+
+  <section id="lobby" class="screen">
+    <header>
+      <strong>💣 BMAKS</strong>
+      <span>ROOM <b id="roomCode">----</b></span>
+    </header>
+    <div class="grid">
+      <div class="panel">
+        <div class="section-title">
+          <div><small>MULTIPLAYER LOBBY</small><h2>Get ready.</h2></div>
+          <b><i id="count">0</i>/8</b>
+        </div>
+        <div id="players"></div>
+        <button id="ready" class="red">I'M READY</button>
+        <button id="start" class="green" hidden>START GAME</button>
+        <button id="leave" class="link">LEAVE ROOM</button>
+        <div id="lobbyError" class="error"></div>
+      </div>
+      <div class="panel rules">
+        <h3>💣 HOW TO PLAY</h3>
+        <p>One player has the bomb.</p>
+        <p>Answer the question before the timer hits zero.</p>
+        <p>Correct answer → bomb passes.</p>
+        <p>Wrong answer or timeout → 💥 BOOM.</p>
+        <p>Last player standing wins.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="game" class="screen">
+    <header>
+      <strong>💣 BMAKS BOMB PASS</strong>
+      <span>ROUND <b id="round">1</b></span>
+    </header>
+    <div id="danger" class="danger"></div>
+    <div class="game-layout">
+      <div class="panel game-main">
+        <div class="holder" id="holder">PLAYER HAS THE BOMB</div>
+        <div id="bomb" class="game-bomb">💣</div>
+        <div id="timer" class="timer">00:12</div>
+        <div id="question" class="question">Loading question...</div>
+        <div id="answers" class="answers"></div>
+        <div id="gameMessage" class="game-message"></div>
+      </div>
+      <aside class="panel scoreboard">
+        <h3>PLAYERS</h3>
+        <div id="scorePlayers"></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="boom" class="screen center">
+    <div class="explosion">💥</div>
+    <h2 id="boomTitle">BOOM!</h2>
+    <p id="boomText">Player eliminated.</p>
+  </section>
+
+  <section id="winner" class="screen center">
+    <div class="trophy">🏆</div>
+    <small>WINNER</small>
+    <h2 id="winnerName">PLAYER</h2>
+    <p>LAST PLAYER STANDING</p>
+    <button id="playAgain" class="red">PLAY AGAIN</button>
+    <button id="menu" class="link">MAIN MENU</button>
+  </section>
+
+  <section id="starting" class="screen center">
+    <div class="bomb">💣</div>
+    <small>GET READY</small>
+    <h2>GAME STARTING</h2>
+    <div id="startNumber">3</div>
+  </section>
+</div>
+<div id="toast"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/game.js"></script>
+</body>
+</html>
