@@ -13,25 +13,18 @@ let currentRemaining = 60000;
 let answering = false;
 
 // ==================================================
-// VOICE CHAT
+// VOICE NOTES
 // ==================================================
 
-let localStream = null;
-let voiceEnabled = false;
+let mediaRecorder = null;
+let voiceChunks = [];
+let voiceRecording = false;
+let voiceRecordingCancelled = false;
+let voiceRecordingTimer = null;
+let voiceRecordingSeconds = 0;
+let voiceStream = null;
 
-const peerConnections = new Map();
-const peerNames = new Map();
-
-const rtcConfig = {
-  iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302"
-    },
-    {
-      urls: "stun:stun1.l.google.com:19302"
-    }
-  ]
-};
+const MAX_VOICE_SECONDS = 60;
 
 // ==================================================
 // CHAT
@@ -151,79 +144,88 @@ function getPlayerName() {
 // CREATE ROOM
 // ==================================================
 
-$("create").onclick = () => {
-  const playerName = getPlayerName();
+if ($("create")) {
+  $("create").onclick = () => {
+    const playerName = getPlayerName();
 
-  if (playerName.length < 2) {
-    return error(
-      $("homeError"),
-      "Enter a name with at least 2 characters."
-    );
-  }
+    if (playerName.length < 2) {
+      return error(
+        $("homeError"),
+        "Enter a name with at least 2 characters."
+      );
+    }
 
-  error($("homeError"), "");
+    error($("homeError"), "");
 
-  socket.emit("room:create", {
-    name: playerName
-  });
-};
+    socket.emit("room:create", {
+      name: playerName
+    });
+  };
+}
 
 // ==================================================
 // JOIN ROOM
 // ==================================================
 
-$("join").onclick = () => {
-  const playerName = getPlayerName();
+if ($("join")) {
+  $("join").onclick = () => {
+    const playerName = getPlayerName();
 
-  const code = $("code")
-    .value
-    .trim()
-    .toUpperCase();
+    const code = $("code")
+      ? $("code").value.trim().toUpperCase()
+      : "";
 
-  if (playerName.length < 2) {
-    return error(
-      $("homeError"),
-      "Enter a name with at least 2 characters."
-    );
-  }
+    if (playerName.length < 2) {
+      return error(
+        $("homeError"),
+        "Enter a name with at least 2 characters."
+      );
+    }
 
-  if (!/^[A-Z0-9]{4}$/.test(code)) {
-    return error(
-      $("homeError"),
-      "Enter the 4-character room code."
-    );
-  }
+    if (!/^[A-Z0-9]{4}$/.test(code)) {
+      return error(
+        $("homeError"),
+        "Enter the 4-character room code."
+      );
+    }
 
-  error($("homeError"), "");
+    error($("homeError"), "");
 
-  socket.emit("room:join", {
-    name: playerName,
-    code: code
-  });
-};
+    socket.emit("room:join", {
+      name: playerName,
+      code: code
+    });
+  };
+}
 
 // ==================================================
 // INPUT CONTROLS
 // ==================================================
 
-$("code").oninput = event => {
-  event.target.value = event.target.value
-    .replace(/[^a-z0-9]/gi, "")
-    .slice(0, 4)
-    .toUpperCase();
-};
+if ($("code")) {
+  $("code").oninput = event => {
+    event.target.value = event.target.value
+      .replace(/[^a-z0-9]/gi, "")
+      .slice(0, 4)
+      .toUpperCase();
+  };
+}
 
-$("name").onkeydown = event => {
-  if (event.key === "Enter") {
-    $("create").click();
-  }
-};
+if ($("name")) {
+  $("name").onkeydown = event => {
+    if (event.key === "Enter" && $("create")) {
+      $("create").click();
+    }
+  };
+}
 
-$("code").onkeydown = event => {
-  if (event.key === "Enter") {
-    $("join").click();
-  }
-};
+if ($("code")) {
+  $("code").onkeydown = event => {
+    if (event.key === "Enter" && $("join")) {
+      $("join").click();
+    }
+  };
+}
 
 // ==================================================
 // ROOM CREATED
@@ -232,7 +234,9 @@ $("code").onkeydown = event => {
 socket.on("room:created", ({ code }) => {
   show("lobby");
 
-  $("roomCode").textContent = code;
+  if ($("roomCode")) {
+    $("roomCode").textContent = code;
+  }
 
   toast("Room created: " + code);
 
@@ -246,7 +250,9 @@ socket.on("room:created", ({ code }) => {
 socket.on("room:joined", ({ code }) => {
   show("lobby");
 
-  $("roomCode").textContent = code;
+  if ($("roomCode")) {
+    $("roomCode").textContent = code;
+  }
 
   toast("Joined room: " + code);
 
@@ -276,10 +282,6 @@ socket.on("room:update", state => {
   }
 
   updateChatVisibility();
-
-  // ----------------------------------------------
-  // ROOM RETURNED TO LOBBY
-  // ----------------------------------------------
 
   if (state.status === "lobby") {
     clearInterval(tickTimer);
@@ -339,10 +341,6 @@ function renderLobby(state) {
 
     row.className = "player";
 
-    // ----------------------------------------------
-    // AVATAR
-    // ----------------------------------------------
-
     const avatar =
       document.createElement("div");
 
@@ -352,10 +350,6 @@ function renderLobby(state) {
       player.name
         ? player.name[0].toUpperCase()
         : "?";
-
-    // ----------------------------------------------
-    // PLAYER INFO
-    // ----------------------------------------------
 
     const playerInfo =
       document.createElement("div");
@@ -370,10 +364,6 @@ function renderLobby(state) {
     playerName.textContent =
       player.name;
 
-    // ----------------------------------------------
-    // HOST
-    // ----------------------------------------------
-
     if (player.id === state.hostId) {
       const host =
         document.createElement("span");
@@ -384,10 +374,6 @@ function renderLobby(state) {
 
       playerName.appendChild(host);
     }
-
-    // ----------------------------------------------
-    // READY STATUS
-    // ----------------------------------------------
 
     const status =
       document.createElement("div");
@@ -407,10 +393,6 @@ function renderLobby(state) {
       status
     );
 
-    // ----------------------------------------------
-    // READY DOT
-    // ----------------------------------------------
-
     const dot =
       document.createElement("div");
 
@@ -428,10 +410,6 @@ function renderLobby(state) {
     list.appendChild(row);
   });
 
-  // ----------------------------------------------
-  // CURRENT PLAYER
-  // ----------------------------------------------
-
   const me =
     state.players.find(
       player => player.id === myId
@@ -441,10 +419,6 @@ function renderLobby(state) {
     $("ready").hidden =
       state.status !== "lobby";
   }
-
-  // ----------------------------------------------
-  // HOST START BUTTON
-  // ----------------------------------------------
 
   if ($("start")) {
     $("start").hidden =
@@ -461,7 +435,10 @@ function renderLobby(state) {
         : "I'M READY";
   }
 
-  if (state.hostId === myId && $("start")) {
+  if (
+    state.hostId === myId &&
+    $("start")
+  ) {
     const everyoneReady =
       state.players.length >= 2 &&
       state.players.every(
@@ -482,66 +459,72 @@ function renderLobby(state) {
 // READY
 // ==================================================
 
-$("ready").onclick = () => {
-  if (!room) {
-    return;
-  }
+if ($("ready")) {
+  $("ready").onclick = () => {
+    if (!room) {
+      return;
+    }
 
-  if (room.status !== "lobby") {
-    return;
-  }
+    if (room.status !== "lobby") {
+      return;
+    }
 
-  socket.emit("player:ready");
-};
+    socket.emit("player:ready");
+  };
+}
 
 // ==================================================
 // START GAME
 // ==================================================
 
-$("start").onclick = () => {
-  if (!room) {
-    return;
-  }
+if ($("start")) {
+  $("start").onclick = () => {
+    if (!room) {
+      return;
+    }
 
-  if (room.status !== "lobby") {
-    return;
-  }
+    if (room.status !== "lobby") {
+      return;
+    }
 
-  if (room.hostId !== myId) {
-    return;
-  }
+    if (room.hostId !== myId) {
+      return;
+    }
 
-  socket.emit("game:start");
-};
+    socket.emit("game:start");
+  };
+}
 
 // ==================================================
 // LEAVE ROOM
 // ==================================================
 
-$("leave").onclick = () => {
-  leaveVoice();
+if ($("leave")) {
+  $("leave").onclick = () => {
+    stopVoiceRecording();
 
-  socket.emit("room:leave");
+    socket.emit("room:leave");
 
-  clearInterval(tickTimer);
-  clearInterval(startTimer);
+    clearInterval(tickTimer);
+    clearInterval(startTimer);
 
-  room = null;
+    room = null;
 
-  answering = false;
+    answering = false;
 
-  currentRemaining = 60000;
+    currentRemaining = 60000;
 
-  updateTimer(60000);
+    updateTimer(60000);
 
-  closeChat();
+    closeChat();
 
-  clearChat();
+    clearChat();
 
-  updateChatVisibility();
+    updateChatVisibility();
 
-  show("home");
-};
+    show("home");
+  };
+}
 
 // ==================================================
 // GAME STARTING
@@ -554,8 +537,10 @@ socket.on("game:starting", () => {
 
   let number = 3;
 
-  $("startNumber").textContent =
-    number;
+  if ($("startNumber")) {
+    $("startNumber").textContent =
+      number;
+  }
 
   startTimer =
     setInterval(() => {
@@ -564,15 +549,18 @@ socket.on("game:starting", () => {
       if (number <= 0) {
         clearInterval(startTimer);
 
-        $("startNumber").textContent =
-          "💣";
+        if ($("startNumber")) {
+          $("startNumber").textContent =
+            "💣";
+        }
 
         return;
       }
 
-      $("startNumber").textContent =
-        number;
-
+      if ($("startNumber")) {
+        $("startNumber").textContent =
+          number;
+      }
     }, 800);
 });
 
@@ -589,24 +577,34 @@ socket.on("game:state", state => {
 
   if (room) {
     room.status = "game";
-    room.bombHolder = state.holderId;
+
+    room.bombHolder =
+      state.holderId;
   }
 
-  $("round").textContent =
-    state.round;
+  if ($("round")) {
+    $("round").textContent =
+      state.round;
+  }
 
   if (state.holderId === myId) {
-    $("holder").textContent =
-      "🔥 YOU HAVE THE BOMB";
+    if ($("holder")) {
+      $("holder").textContent =
+        "🔥 YOU HAVE THE BOMB";
+    }
   } else {
-    $("holder").textContent =
-      "💣 " +
-      state.holderName +
-      " HAS THE BOMB";
+    if ($("holder")) {
+      $("holder").textContent =
+        "💣 " +
+        state.holderName +
+        " HAS THE BOMB";
+    }
   }
 
-  $("question").textContent =
-    state.question;
+  if ($("question")) {
+    $("question").textContent =
+      state.question;
+  }
 
   currentRemaining =
     Number(state.remainingMs);
@@ -649,12 +647,14 @@ function renderAnswers(answers) {
 
   answers.forEach(
     (answerText, index) => {
-
       const button =
         document.createElement("button");
 
       button.className =
         "answer";
+
+      button.type =
+        "button";
 
       button.textContent =
         String.fromCharCode(65 + index) +
@@ -725,7 +725,6 @@ function startLocalTimer() {
 
   tickTimer =
     setInterval(() => {
-
       const now =
         Date.now();
 
@@ -743,7 +742,6 @@ function startLocalTimer() {
       updateTimer(
         remaining
       );
-
     }, 50);
 
   updateTimer(
@@ -758,7 +756,6 @@ function startLocalTimer() {
 socket.on(
   "game:tick",
   data => {
-
     if (!data) {
       return;
     }
@@ -830,9 +827,7 @@ function updateTimer(ms) {
   }
 
   if ($("bomb")) {
-
     if (danger) {
-
       const scale =
         1 +
         (3 - seconds) *
@@ -845,9 +840,7 @@ function updateTimer(ms) {
 
       $("bomb").style.transform =
         `scale(${scale}) rotate(${rotation}deg)`;
-
     } else {
-
       $("bomb").style.transform =
         "";
     }
@@ -861,18 +854,16 @@ function updateTimer(ms) {
 socket.on(
   "game:correct",
   data => {
-
-    if (data.playerId === myId) {
-
-      $("gameMessage").textContent =
-        "✓ Correct! Passing the bomb...";
-
-    } else {
-
-      $("gameMessage").textContent =
-        "✓ " +
-        data.playerName +
-        " answered correctly.";
+    if ($("gameMessage")) {
+      if (data.playerId === myId) {
+        $("gameMessage").textContent =
+          "✓ Correct! Passing the bomb...";
+      } else {
+        $("gameMessage").textContent =
+          "✓ " +
+          data.playerName +
+          " answered correctly.";
+      }
     }
 
     document
@@ -890,7 +881,6 @@ socket.on(
 socket.on(
   "game:boom",
   data => {
-
     clearInterval(tickTimer);
 
     answering = false;
@@ -901,31 +891,30 @@ socket.on(
 
     show("boom");
 
-    $("boomTitle").textContent =
-      "💥 BOOM!";
-
-    if (data.playerId === myId) {
-
-      $("boomText").textContent =
-        "You were eliminated!";
-
-    } else {
-
-      $("boomText").textContent =
-        data.playerName +
-        " was eliminated!";
+    if ($("boomTitle")) {
+      $("boomTitle").textContent =
+        "💥 BOOM!";
     }
 
-    if (data.reason === "WRONG") {
+    if ($("boomText")) {
+      if (data.playerId === myId) {
+        $("boomText").textContent =
+          "You were eliminated!";
+      } else {
+        $("boomText").textContent =
+          data.playerName +
+          " was eliminated!";
+      }
 
-      $("boomText").textContent +=
-        " Wrong answer.";
-    }
+      if (data.reason === "WRONG") {
+        $("boomText").textContent +=
+          " Wrong answer.";
+      }
 
-    if (data.reason === "TIME") {
-
-      $("boomText").textContent +=
-        " Time ran out.";
+      if (data.reason === "TIME") {
+        $("boomText").textContent +=
+          " Time ran out.";
+      }
     }
   }
 );
@@ -937,28 +926,25 @@ socket.on(
 socket.on(
   "game:winner",
   data => {
-
     clearInterval(tickTimer);
 
     answering = false;
 
     show("winner");
 
-    if (data.winner) {
-
-      $("winnerName").textContent =
-        data.winner.id === myId
-          ? "YOU!"
-          : data.winner.name;
-
-    } else {
-
-      $("winnerName").textContent =
-        "NO WINNER";
+    if ($("winnerName")) {
+      if (data.winner) {
+        $("winnerName").textContent =
+          data.winner.id === myId
+            ? "YOU!"
+            : data.winner.name;
+      } else {
+        $("winnerName").textContent =
+          "NO WINNER";
+      }
     }
 
     if (typeof renderScore === "function") {
-
       renderScore(
         data.players || []
       );
@@ -970,25 +956,25 @@ socket.on(
 // PLAY AGAIN
 // ==================================================
 
-$("playAgain").onclick = () => {
+if ($("playAgain")) {
+  $("playAgain").onclick = () => {
+    if (!room) {
+      toast(
+        "You are no longer in the room."
+      );
 
-  if (!room) {
+      return;
+    }
 
-    toast(
-      "You are no longer in the room."
+    if (room.status !== "finished") {
+      return;
+    }
+
+    socket.emit(
+      "game:playAgain"
     );
-
-    return;
-  }
-
-  if (room.status !== "finished") {
-    return;
-  }
-
-  socket.emit(
-    "game:playAgain"
-  );
-};
+  };
+}
 
 // ==================================================
 // LOBBY RETURNED
@@ -997,8 +983,8 @@ $("playAgain").onclick = () => {
 socket.on(
   "lobby:returned",
   ({ code }) => {
-
     clearInterval(tickTimer);
+
     clearInterval(startTimer);
 
     answering = false;
@@ -1008,7 +994,6 @@ socket.on(
     updateTimer(60000);
 
     if (room) {
-
       room.status =
         "lobby";
 
@@ -1017,7 +1002,6 @@ socket.on(
     }
 
     if ($("roomCode")) {
-
       $("roomCode").textContent =
         code;
     }
@@ -1034,31 +1018,33 @@ socket.on(
 // MAIN MENU
 // ==================================================
 
-$("menu").onclick = () => {
+if ($("menu")) {
+  $("menu").onclick = () => {
+    stopVoiceRecording();
 
-  leaveVoice();
+    socket.emit(
+      "room:leave"
+    );
 
-  socket.emit(
-    "room:leave"
-  );
+    clearInterval(tickTimer);
 
-  clearInterval(tickTimer);
-  clearInterval(startTimer);
+    clearInterval(startTimer);
 
-  room = null;
+    room = null;
 
-  answering = false;
+    answering = false;
 
-  currentRemaining = 60000;
+    currentRemaining = 60000;
 
-  closeChat();
+    closeChat();
 
-  clearChat();
+    clearChat();
 
-  updateTimer(60000);
+    updateTimer(60000);
 
-  location.reload();
-};
+    location.reload();
+  };
+}
 
 // ==================================================
 // SERVER ERROR
@@ -1067,19 +1053,15 @@ $("menu").onclick = () => {
 socket.on(
   "error:message",
   msg => {
-
     let active;
 
     if (
       screens.home &&
       screens.home.classList.contains("active")
     ) {
-
       active =
         $("homeError");
-
     } else {
-
       active =
         $("lobbyError");
     }
@@ -1094,23 +1076,41 @@ socket.on(
 );
 
 // ==================================================
+// VOICE NOTE ERROR
+// ==================================================
+
+socket.on(
+  "voice-note:error",
+  message => {
+    console.error(
+      "Voice note error:",
+      message
+    );
+
+    toast(
+      message ||
+      "Could not send voice note."
+    );
+  }
+);
+
+// ==================================================
 // DISCONNECT
 // ==================================================
 
 socket.on(
   "disconnect",
   () => {
-
     clearInterval(tickTimer);
+
     clearInterval(startTimer);
 
-    leaveVoice();
+    stopVoiceRecording();
 
     if (
       screens.home &&
       !screens.home.classList.contains("active")
     ) {
-
       toast(
         "Disconnected from server."
       );
@@ -1119,14 +1119,8 @@ socket.on(
 );
 
 // ==================================================
-// ==================================================
 // CHAT SYSTEM
 // ==================================================
-// ==================================================
-
-// --------------------------------------------------
-// CHAT ELEMENTS
-// --------------------------------------------------
 
 const chatLauncher =
   $("chatLauncher");
@@ -1149,12 +1143,11 @@ const chatInput =
 const chatBadge =
   $("chatBadge");
 
-// --------------------------------------------------
+// ==================================================
 // OPEN CHAT
-// --------------------------------------------------
+// ==================================================
 
 function openChat() {
-
   if (!room) {
     return;
   }
@@ -1162,7 +1155,6 @@ function openChat() {
   chatOpen = true;
 
   if (chatPanel) {
-
     chatPanel.classList.add(
       "open"
     );
@@ -1178,26 +1170,22 @@ function openChat() {
   updateChatBadge();
 
   setTimeout(() => {
-
     if (chatInput) {
       chatInput.focus();
     }
 
     scrollChatToBottom();
-
   }, 50);
 }
 
-// --------------------------------------------------
+// ==================================================
 // CLOSE CHAT
-// --------------------------------------------------
+// ==================================================
 
 function closeChat() {
-
   chatOpen = false;
 
   if (chatPanel) {
-
     chatPanel.classList.remove(
       "open"
     );
@@ -1209,44 +1197,38 @@ function closeChat() {
   }
 }
 
-// --------------------------------------------------
+// ==================================================
 // CHAT BUTTON
-// --------------------------------------------------
+// ==================================================
 
 if (chatLauncher) {
-
   chatLauncher.onclick = () => {
-
     if (chatOpen) {
       closeChat();
     } else {
       openChat();
     }
-
   };
 }
 
-// --------------------------------------------------
-// CLOSE BUTTON
-// --------------------------------------------------
+// ==================================================
+// CLOSE CHAT
+// ==================================================
 
 if (chatClose) {
-
   chatClose.onclick = () => {
     closeChat();
   };
 }
 
-// --------------------------------------------------
+// ==================================================
 // CHAT FORM
-// --------------------------------------------------
+// ==================================================
 
 if (chatForm) {
-
   chatForm.addEventListener(
     "submit",
     event => {
-
       event.preventDefault();
 
       sendChatMessage();
@@ -1254,12 +1236,11 @@ if (chatForm) {
   );
 }
 
-// --------------------------------------------------
-// SEND MESSAGE
-// --------------------------------------------------
+// ==================================================
+// SEND TEXT MESSAGE
+// ==================================================
 
 function sendChatMessage() {
-
   if (!room) {
     return;
   }
@@ -1269,8 +1250,7 @@ function sendChatMessage() {
   }
 
   const message =
-    chatInput.value
-      .trim();
+    chatInput.value.trim();
 
   if (!message) {
     return;
@@ -1288,32 +1268,29 @@ function sendChatMessage() {
   chatInput.focus();
 }
 
-// --------------------------------------------------
+// ==================================================
 // CHAT HISTORY
-// --------------------------------------------------
+// ==================================================
 
 socket.on(
   "chat:history",
   messages => {
-
     chatMessages =
       Array.isArray(messages)
         ? messages
         : [];
 
     renderChat();
-
   }
 );
 
-// --------------------------------------------------
-// NEW CHAT MESSAGE
-// --------------------------------------------------
+// ==================================================
+// NEW TEXT CHAT MESSAGE
+// ==================================================
 
 socket.on(
   "chat:message",
   message => {
-
     if (!message) {
       return;
     }
@@ -1326,7 +1303,6 @@ socket.on(
       chatMessages.length >
       100
     ) {
-
       chatMessages =
         chatMessages.slice(-100);
     }
@@ -1334,21 +1310,12 @@ socket.on(
     renderChat();
 
     if (
-      message.playerId !==
-      myId &&
+      message.playerId !== myId &&
       !chatOpen
     ) {
-
       unreadMessages++;
 
       updateChatBadge();
-    }
-
-    if (
-      message.playerId !==
-      myId &&
-      !chatOpen
-    ) {
 
       toast(
         message.playerName +
@@ -1359,12 +1326,55 @@ socket.on(
   }
 );
 
-// --------------------------------------------------
+// ==================================================
+// VOICE NOTE RECEIVED
+// ==================================================
+
+socket.on(
+  "chat:voice",
+  message => {
+    if (!message) {
+      return;
+    }
+
+    chatMessages.push(
+      {
+        ...message,
+        type: "voice"
+      }
+    );
+
+    if (
+      chatMessages.length >
+      100
+    ) {
+      chatMessages =
+        chatMessages.slice(-100);
+    }
+
+    renderChat();
+
+    if (
+      message.playerId !== myId &&
+      !chatOpen
+    ) {
+      unreadMessages++;
+
+      updateChatBadge();
+
+      toast(
+        message.playerName +
+        " sent a voice note 🎤"
+      );
+    }
+  }
+);
+
+// ==================================================
 // RENDER CHAT
-// --------------------------------------------------
+// ==================================================
 
 function renderChat() {
-
   if (!chatMessagesBox) {
     return;
   }
@@ -1374,7 +1384,6 @@ function renderChat() {
   if (
     chatMessages.length === 0
   ) {
-
     const empty =
       document.createElement(
         "div"
@@ -1395,6 +1404,15 @@ function renderChat() {
 
   chatMessages.forEach(
     message => {
+      if (
+        message.type === "voice"
+      ) {
+        renderVoiceNote(
+          message
+        );
+
+        return;
+      }
 
       const wrapper =
         document.createElement(
@@ -1405,10 +1423,8 @@ function renderChat() {
         "chat-message";
 
       if (
-        message.playerId ===
-        myId
+        message.playerId === myId
       ) {
-
         wrapper.classList.add(
           "mine"
         );
@@ -1466,12 +1482,248 @@ function renderChat() {
   scrollChatToBottom();
 }
 
-// --------------------------------------------------
+// ==================================================
+// RENDER VOICE NOTE
+// ==================================================
+
+function renderVoiceNote(message) {
+  const wrapper =
+    document.createElement(
+      "div"
+    );
+
+  wrapper.className =
+    "chat-message voice-message";
+
+  if (
+    message.playerId === myId
+  ) {
+    wrapper.classList.add(
+      "mine"
+    );
+  }
+
+  const name =
+    document.createElement(
+      "div"
+    );
+
+  name.className =
+    "chat-name";
+
+  name.textContent =
+    message.playerId === myId
+      ? "You"
+      : message.playerName;
+
+  const bubble =
+    document.createElement(
+      "div"
+    );
+
+  bubble.className =
+    "voice-note";
+
+  const playButton =
+    document.createElement(
+      "button"
+    );
+
+  playButton.className =
+    "voice-play";
+
+  playButton.type =
+    "button";
+
+  playButton.textContent =
+    "▶";
+
+  const waveform =
+    document.createElement(
+      "div"
+    );
+
+  waveform.className =
+    "voice-waveform";
+
+  const bars = [
+    8, 14, 22, 12, 18,
+    28, 16, 24, 34, 20,
+    13, 25, 18, 30, 15,
+    22, 11, 26, 17, 9,
+    21, 29, 14, 19, 12
+  ];
+
+  bars.forEach(height => {
+    const bar =
+      document.createElement(
+        "span"
+      );
+
+    bar.style.height =
+      height + "px";
+
+    waveform.appendChild(bar);
+  });
+
+  const duration =
+    document.createElement(
+      "span"
+    );
+
+  duration.className =
+    "voice-duration";
+
+  duration.textContent =
+    formatVoiceDuration(
+      message.duration
+    );
+
+  const time =
+    document.createElement(
+      "div"
+    );
+
+  time.className =
+    "chat-time";
+
+  time.textContent =
+    formatChatTime(
+      message.time
+    );
+
+  bubble.append(
+    playButton,
+    waveform,
+    duration
+  );
+
+  wrapper.append(
+    name,
+    bubble,
+    time
+  );
+
+  chatMessagesBox.appendChild(
+    wrapper
+  );
+
+  let audio = null;
+
+  if (message.audio) {
+    try {
+      audio =
+        new Audio(
+          message.audio
+        );
+
+      audio.preload =
+        "metadata";
+    } catch (err) {
+      console.error(
+        "Audio creation error:",
+        err
+      );
+
+      audio = null;
+    }
+  }
+
+  playButton.onclick = () => {
+    if (!audio) {
+      toast(
+        "Voice note is unavailable."
+      );
+
+      return;
+    }
+
+    if (audio.paused) {
+      audio.play()
+        .then(() => {
+          playButton.textContent =
+            "❚❚";
+        })
+        .catch(err => {
+          console.error(
+            "Audio playback error:",
+            err
+          );
+
+          toast(
+            "Could not play voice note."
+          );
+        });
+    } else {
+      audio.pause();
+
+      playButton.textContent =
+        "▶";
+    }
+  };
+
+  if (audio) {
+    audio.onended = () => {
+      playButton.textContent =
+        "▶";
+    };
+
+    audio.ontimeupdate = () => {
+      if (
+        !audio.duration ||
+        !Number.isFinite(audio.duration)
+      ) {
+        return;
+      }
+
+      const progress =
+        audio.currentTime /
+        audio.duration;
+
+      waveform
+        .style
+        .setProperty(
+          "--voice-progress",
+          progress
+        );
+    };
+  }
+}
+
+// ==================================================
+// FORMAT VOICE DURATION
+// ==================================================
+
+function formatVoiceDuration(seconds) {
+  const value =
+    Math.max(
+      0,
+      Number(seconds) || 0
+    );
+
+  const minutes =
+    Math.floor(
+      value / 60
+    );
+
+  const secs =
+    Math.floor(
+      value % 60
+    );
+
+  return (
+    String(minutes) +
+    ":" +
+    String(secs)
+      .padStart(2, "0")
+  );
+}
+
+// ==================================================
 // FORMAT CHAT TIME
-// --------------------------------------------------
+// ==================================================
 
 function formatChatTime(timestamp) {
-
   if (!timestamp) {
     return "";
   }
@@ -1488,12 +1740,11 @@ function formatChatTime(timestamp) {
   );
 }
 
-// --------------------------------------------------
+// ==================================================
 // SCROLL CHAT
-// --------------------------------------------------
+// ==================================================
 
 function scrollChatToBottom() {
-
   if (!chatMessagesBox) {
     return;
   }
@@ -1502,12 +1753,11 @@ function scrollChatToBottom() {
     chatMessagesBox.scrollHeight;
 }
 
-// --------------------------------------------------
+// ==================================================
 // CHAT BADGE
-// --------------------------------------------------
+// ==================================================
 
 function updateChatBadge() {
-
   if (!chatBadge) {
     return;
   }
@@ -1515,7 +1765,6 @@ function updateChatBadge() {
   if (
     unreadMessages <= 0
   ) {
-
     chatBadge.classList.remove(
       "show"
     );
@@ -1536,12 +1785,11 @@ function updateChatBadge() {
       : String(unreadMessages);
 }
 
-// --------------------------------------------------
+// ==================================================
 // CLEAR CHAT
-// --------------------------------------------------
+// ==================================================
 
 function clearChat() {
-
   chatMessages = [];
 
   unreadMessages = 0;
@@ -1552,14 +1800,8 @@ function clearChat() {
 }
 
 // ==================================================
+// VOICE NOTE UI
 // ==================================================
-// VOICE CHAT
-// ==================================================
-// ==================================================
-
-// --------------------------------------------------
-// VOICE ELEMENTS
-// --------------------------------------------------
 
 const voiceButton =
   $("voiceButton");
@@ -1567,106 +1809,100 @@ const voiceButton =
 const voiceStatus =
   $("voiceStatus");
 
-const voiceParticipants =
-  $("voiceParticipants");
-
-// --------------------------------------------------
-// UPDATE VOICE UI
-// --------------------------------------------------
-
-function updateVoiceUI() {
-
+function updateVoiceNoteUI() {
   if (!voiceButton) {
     return;
   }
 
-  if (voiceEnabled) {
-
+  if (voiceRecording) {
     voiceButton.textContent =
-      "🔇 LEAVE VOICE";
+      "🔴 " +
+      formatVoiceDuration(
+        voiceRecordingSeconds
+      );
+
+    voiceButton.classList.add(
+      "recording"
+    );
 
     voiceButton.classList.remove(
       "off"
     );
 
     if (voiceStatus) {
-
       voiceStatus.textContent =
-        "Voice chat connected";
+        voiceRecordingCancelled
+          ? "Release to cancel"
+          : "Release to send";
     }
-
   } else {
-
     voiceButton.textContent =
-      "🎤 JOIN VOICE";
+      "🎤";
+
+    voiceButton.classList.remove(
+      "recording"
+    );
 
     voiceButton.classList.add(
       "off"
     );
 
     if (voiceStatus) {
-
       voiceStatus.textContent =
-        "Voice chat is off";
+        "Hold to record";
     }
   }
-
-  renderVoiceParticipants();
 }
 
-// --------------------------------------------------
-// VOICE BUTTON
-// --------------------------------------------------
+// ==================================================
+// START RECORDING
+// ==================================================
 
-if (voiceButton) {
+async function startVoiceRecording(event) {
+  if (
+    event &&
+    event.button !== undefined &&
+    event.button !== 0
+  ) {
+    return;
+  }
 
-  voiceButton.onclick = async () => {
+  if (!room) {
+    toast(
+      "Join a room first."
+    );
 
-    if (!room) {
-      toast(
-        "Join a room first."
-      );
+    return;
+  }
 
-      return;
-    }
+  if (voiceRecording) {
+    return;
+  }
 
-    if (voiceEnabled) {
+  if (
+    typeof MediaRecorder ===
+    "undefined"
+  ) {
+    toast(
+      "Voice recording is not supported by this browser."
+    );
 
-      leaveVoice();
-
-    } else {
-
-      await joinVoice();
-    }
-
-  };
-}
-
-// --------------------------------------------------
-// JOIN VOICE
-// --------------------------------------------------
-
-async function joinVoice() {
-
-  if (voiceEnabled) {
     return;
   }
 
   try {
-
     if (
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
     ) {
-
       toast(
-        "Your browser does not support microphone access."
+        "Your browser does not support voice recording."
       );
 
       return;
     }
 
-    localStream =
+    voiceStream =
       await navigator.mediaDevices.getUserMedia(
         {
           audio: {
@@ -1678,43 +1914,195 @@ async function joinVoice() {
         }
       );
 
-    voiceEnabled = true;
+    const options =
+      getVoiceRecorderOptions();
 
-    updateVoiceUI();
+    mediaRecorder =
+      options
+        ? new MediaRecorder(
+            voiceStream,
+            options
+          )
+        : new MediaRecorder(
+            voiceStream
+          );
 
-    socket.emit(
-      "voice:join"
-    );
+    voiceChunks = [];
 
-    toast(
-      "Voice chat enabled."
-    );
+    voiceRecording = true;
+
+    voiceRecordingCancelled =
+      false;
+
+    voiceRecordingSeconds =
+      0;
+
+    mediaRecorder.ondataavailable =
+      event => {
+        if (
+          event.data &&
+          event.data.size > 0
+        ) {
+          voiceChunks.push(
+            event.data
+          );
+        }
+      };
+
+    mediaRecorder.onerror =
+      event => {
+        console.error(
+          "MediaRecorder error:",
+          event
+        );
+
+        toast(
+          "Voice recording error."
+        );
+
+        voiceRecordingCancelled =
+          true;
+      };
+
+    mediaRecorder.onstop =
+      async () => {
+        const wasCancelled =
+          voiceRecordingCancelled;
+
+        const duration =
+          voiceRecordingSeconds;
+
+        voiceRecording = false;
+
+        clearInterval(
+          voiceRecordingTimer
+        );
+
+        updateVoiceNoteUI();
+
+        if (voiceStream) {
+          voiceStream
+            .getTracks()
+            .forEach(
+              track => {
+                track.stop();
+              }
+            );
+
+          voiceStream = null;
+        }
+
+        if (wasCancelled) {
+          voiceChunks = [];
+
+          mediaRecorder = null;
+
+          return;
+        }
+
+        if (
+          !voiceChunks.length
+        ) {
+          mediaRecorder = null;
+
+          return;
+        }
+
+        const mimeType =
+          mediaRecorder.mimeType ||
+          "audio/webm";
+
+        const blob =
+          new Blob(
+            voiceChunks,
+            {
+              type: mimeType
+            }
+          );
+
+        voiceChunks = [];
+
+        mediaRecorder = null;
+
+        await sendVoiceNote(
+          blob,
+          duration
+        );
+      };
+
+    mediaRecorder.start();
+
+    updateVoiceNoteUI();
+
+    voiceRecordingTimer =
+      setInterval(() => {
+        voiceRecordingSeconds++;
+
+        updateVoiceNoteUI();
+
+        if (
+          voiceRecordingSeconds >=
+          MAX_VOICE_SECONDS
+        ) {
+          stopVoiceRecording(
+            false
+          );
+        }
+      }, 1000);
 
   } catch (err) {
-
     console.error(
-      "Microphone error:",
+      "Voice recording error:",
       err
     );
 
-    voiceEnabled = false;
+    voiceRecording = false;
 
-    localStream = null;
+    clearInterval(
+      voiceRecordingTimer
+    );
 
-    updateVoiceUI();
+    if (voiceStream) {
+      voiceStream
+        .getTracks()
+        .forEach(
+          track => {
+            track.stop();
+          }
+        );
+
+      voiceStream = null;
+    }
+
+    mediaRecorder = null;
+
+    updateVoiceNoteUI();
 
     if (
       err &&
       err.name ===
       "NotAllowedError"
     ) {
-
       toast(
         "Microphone permission was denied."
       );
-
+    } else if (
+      err &&
+      err.name ===
+      "NotFoundError"
+    ) {
+      toast(
+        "No microphone was found."
+      );
+    } else if (
+      err &&
+      err.name ===
+      "NotReadableError"
+    ) {
+      toast(
+        "Your microphone is already being used."
+      );
     } else {
-
       toast(
         "Could not access your microphone."
       );
@@ -1722,665 +2110,276 @@ async function joinVoice() {
   }
 }
 
-// --------------------------------------------------
-// LEAVE VOICE
-// --------------------------------------------------
+// ==================================================
+// RECORDER OPTIONS
+// ==================================================
 
-function leaveVoice() {
-
-  if (voiceEnabled) {
-
-    socket.emit(
-      "voice:leave"
-    );
-  }
-
-  voiceEnabled = false;
-
-  peerConnections.forEach(
-    connection => {
-
-      try {
-        connection.close();
-      } catch (_) {}
-    }
-  );
-
-  peerConnections.clear();
-
-  peerNames.clear();
-
-  if (localStream) {
-
-    localStream
-      .getTracks()
-      .forEach(
-        track => {
-          track.stop();
-        }
-      );
-
-    localStream = null;
-  }
-
-  updateVoiceUI();
-}
-
-// --------------------------------------------------
-// PARTICIPANTS LIST
-// --------------------------------------------------
-
-socket.on(
-  "voice:participants",
-  async participants => {
-
-    if (!voiceEnabled) {
-      return;
-    }
-
-    if (!Array.isArray(participants)) {
-      return;
-    }
-
-    for (
-      const participant of participants
-    ) {
-
-      if (
-        !participant ||
-        !participant.peerId
-      ) {
-        continue;
-      }
-
-      peerNames.set(
-        participant.peerId,
-        participant.peerName ||
-        "Player"
-      );
-
-      await createOffer(
-        participant.peerId
-      );
-    }
-
-    renderVoiceParticipants();
-  }
-);
-
-// --------------------------------------------------
-// NEW VOICE PEER
-// --------------------------------------------------
-
-socket.on(
-  "voice:peer-joined",
-  async data => {
-
-    if (!data) {
-      return;
-    }
-
-    if (!data.peerId) {
-      return;
-    }
-
-    peerNames.set(
-      data.peerId,
-      data.peerName ||
-      "Player"
-    );
-
-    renderVoiceParticipants();
-
-    // The new player will receive an offer
-    // from the player who is already in voice.
-    if (voiceEnabled) {
-      await createOffer(
-        data.peerId
-      );
-    }
-  }
-);
-
-// --------------------------------------------------
-// CREATE PEER CONNECTION
-// --------------------------------------------------
-
-function createPeerConnection(
-  peerId
-) {
-
+function getVoiceRecorderOptions() {
   if (
-    peerConnections.has(
-      peerId
-    )
+    typeof MediaRecorder ===
+    "undefined"
   ) {
-
-    return peerConnections.get(
-      peerId
-    );
+    return null;
   }
 
-  const pc =
-    new RTCPeerConnection(
-      rtcConfig
-    );
+  const formats = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus"
+  ];
 
-  peerConnections.set(
-    peerId,
-    pc
-  );
-
-  // ----------------------------------------------
-  // SEND MICROPHONE
-  // ----------------------------------------------
-
-  if (localStream) {
-
-    localStream
-      .getTracks()
-      .forEach(
-        track => {
-
-          pc.addTrack(
-            track,
-            localStream
-          );
-        }
-      );
+  for (
+    const type of formats
+  ) {
+    if (
+      MediaRecorder.isTypeSupported(
+        type
+      )
+    ) {
+      return {
+        mimeType: type
+      };
+    }
   }
 
-  // ----------------------------------------------
-  // ICE
-  // ----------------------------------------------
-
-  pc.onicecandidate =
-    event => {
-
-      if (
-        event.candidate
-      ) {
-
-        socket.emit(
-          "voice:ice",
-          {
-            targetId:
-              peerId,
-
-            candidate:
-              event.candidate
-          }
-        );
-      }
-    };
-
-  // ----------------------------------------------
-  // RECEIVE AUDIO
-  // ----------------------------------------------
-
-  pc.ontrack =
-    event => {
-
-      if (
-        !event.streams ||
-        !event.streams[0]
-      ) {
-        return;
-      }
-
-      attachRemoteAudio(
-        peerId,
-        event.streams[0]
-      );
-    };
-
-  // ----------------------------------------------
-  // CONNECTION STATE
-  // ----------------------------------------------
-
-  pc.onconnectionstatechange =
-    () => {
-
-      if (
-        pc.connectionState ===
-        "connected"
-      ) {
-
-        setVoicePersonTalking(
-          peerId,
-          false
-        );
-
-      }
-
-      if (
-        pc.connectionState ===
-        "failed" ||
-        pc.connectionState ===
-        "closed" ||
-        pc.connectionState ===
-        "disconnected"
-      ) {
-
-        removePeer(
-          peerId
-        );
-      }
-    };
-
-  return pc;
+  return null;
 }
 
-// --------------------------------------------------
-// CREATE OFFER
-// --------------------------------------------------
+// ==================================================
+// STOP RECORDING
+// ==================================================
 
-async function createOffer(
-  peerId
+function stopVoiceRecording(
+  cancel = true
 ) {
-
-  if (!voiceEnabled) {
+  if (!mediaRecorder) {
     return;
   }
 
+  if (
+    mediaRecorder.state ===
+    "inactive"
+  ) {
+    return;
+  }
+
+  voiceRecordingCancelled =
+    cancel;
+
+  clearInterval(
+    voiceRecordingTimer
+  );
+
   try {
-
-    const pc =
-      createPeerConnection(
-        peerId
-      );
-
-    const offer =
-      await pc.createOffer();
-
-    await pc.setLocalDescription(
-      offer
-    );
-
-    socket.emit(
-      "voice:offer",
-      {
-        targetId:
-          peerId,
-
-        offer:
-          pc.localDescription
-      }
-    );
-
+    mediaRecorder.stop();
   } catch (err) {
-
     console.error(
-      "Voice offer error:",
+      "Could not stop recording:",
       err
     );
   }
 }
 
-// --------------------------------------------------
-// RECEIVE OFFER
-// --------------------------------------------------
+// ==================================================
+// SEND VOICE NOTE
+// ==================================================
 
-socket.on(
-  "voice:offer",
-  async data => {
+async function sendVoiceNote(
+  blob,
+  duration
+) {
+  if (!room) {
+    return;
+  }
 
-    if (!voiceEnabled) {
+  try {
+    const MAX_SIZE =
+      2 * 1024 * 1024;
+
+    if (blob.size > MAX_SIZE) {
+      toast(
+        "Voice note is too large. Maximum size is 2 MB."
+      );
+
       return;
     }
 
     if (
-      !data ||
-      !data.fromId ||
-      !data.offer
+      duration <= 0
     ) {
+      toast(
+        "Voice note is too short."
+      );
+
       return;
     }
 
-    const peerId =
-      data.fromId;
+    const reader =
+      new FileReader();
 
-    try {
+    reader.onload = () => {
+      const audio =
+        reader.result;
 
-      const pc =
-        createPeerConnection(
-          peerId
-        );
+      const message = {
+        audio,
+        duration:
+          Math.min(
+            MAX_VOICE_SECONDS,
+            duration
+          ),
+        mimeType:
+          blob.type || "audio/webm"
+      };
 
-      await pc.setRemoteDescription(
-        new RTCSessionDescription(
-          data.offer
-        )
-      );
-
-      const answer =
-        await pc.createAnswer();
-
-      await pc.setLocalDescription(
-        answer
-      );
-
+      // IMPORTANT:
+      // The server listens for "voice-note:send".
       socket.emit(
-        "voice:answer",
-        {
-          targetId:
-            peerId,
-
-          answer:
-            pc.localDescription
-        }
+        "voice-note:send",
+        message
       );
+    };
 
-    } catch (err) {
-
-      console.error(
-        "Voice offer handling error:",
-        err
+    reader.onerror = () => {
+      toast(
+        "Could not read voice note."
       );
-    }
-  }
-);
+    };
 
-// --------------------------------------------------
-// RECEIVE ANSWER
-// --------------------------------------------------
-
-socket.on(
-  "voice:answer",
-  async data => {
-
-    if (
-      !data ||
-      !data.fromId ||
-      !data.answer
-    ) {
-      return;
-    }
-
-    const pc =
-      peerConnections.get(
-        data.fromId
-      );
-
-    if (!pc) {
-      return;
-    }
-
-    try {
-
-      await pc.setRemoteDescription(
-        new RTCSessionDescription(
-          data.answer
-        )
-      );
-
-    } catch (err) {
-
-      console.error(
-        "Voice answer error:",
-        err
-      );
-    }
-  }
-);
-
-// --------------------------------------------------
-// RECEIVE ICE
-// --------------------------------------------------
-
-socket.on(
-  "voice:ice",
-  async data => {
-
-    if (
-      !data ||
-      !data.fromId ||
-      !data.candidate
-    ) {
-      return;
-    }
-
-    const pc =
-      peerConnections.get(
-        data.fromId
-      );
-
-    if (!pc) {
-      return;
-    }
-
-    try {
-
-      await pc.addIceCandidate(
-        new RTCIceCandidate(
-          data.candidate
-        )
-      );
-
-    } catch (err) {
-
-      console.error(
-        "ICE candidate error:",
-        err
-      );
-    }
-  }
-);
-
-// --------------------------------------------------
-// PEER LEFT
-// --------------------------------------------------
-
-socket.on(
-  "voice:peer-left",
-  data => {
-
-    if (
-      !data ||
-      !data.peerId
-    ) {
-      return;
-    }
-
-    removePeer(
-      data.peerId
-    );
-  }
-);
-
-// --------------------------------------------------
-// REMOVE PEER
-// --------------------------------------------------
-
-function removePeer(
-  peerId
-) {
-
-  const pc =
-    peerConnections.get(
-      peerId
+    reader.readAsDataURL(
+      blob
     );
 
-  if (pc) {
-
-    try {
-      pc.close();
-    } catch (_) {}
-
-    peerConnections.delete(
-      peerId
-    );
-  }
-
-  peerNames.delete(
-    peerId
-  );
-
-  const audio =
-    document.getElementById(
-      "voice-audio-" +
-      peerId
+  } catch (err) {
+    console.error(
+      "Voice note send error:",
+      err
     );
 
-  if (audio) {
-    audio.remove();
+    toast(
+      "Could not send voice note."
+    );
   }
-
-  renderVoiceParticipants();
 }
 
-// --------------------------------------------------
-// REMOTE AUDIO
-// --------------------------------------------------
+// ==================================================
+// VOICE BUTTON EVENTS
+// ==================================================
 
-function attachRemoteAudio(
-  peerId,
-  stream
-) {
-
-  let audio =
-    document.getElementById(
-      "voice-audio-" +
-      peerId
-    );
-
-  if (!audio) {
-
-    audio =
-      document.createElement(
-        "audio"
+if (voiceButton) {
+  voiceButton.addEventListener(
+    "mousedown",
+    event => {
+      startVoiceRecording(
+        event
       );
-
-    audio.id =
-      "voice-audio-" +
-      peerId;
-
-    audio.autoplay =
-      true;
-
-    audio.playsInline =
-      true;
-
-    audio.style.display =
-      "none";
-
-    document.body.appendChild(
-      audio
-    );
-  }
-
-  audio.srcObject =
-    stream;
-
-  audio.play()
-    .catch(
-      () => {}
-    );
-}
-
-// --------------------------------------------------
-// VOICE PARTICIPANTS UI
-// --------------------------------------------------
-
-function renderVoiceParticipants() {
-
-  if (!voiceParticipants) {
-    return;
-  }
-
-  voiceParticipants.innerHTML = "";
-
-  if (!voiceEnabled) {
-    return;
-  }
-
-  const me =
-    document.createElement(
-      "span"
-    );
-
-  me.className =
-    "voice-person";
-
-  me.textContent =
-    "🎤 You";
-
-  voiceParticipants.appendChild(
-    me
+    }
   );
 
-  peerNames.forEach(
-    (name, peerId) => {
+  voiceButton.addEventListener(
+    "mouseup",
+    () => {
+      stopVoiceRecording(
+        false
+      );
+    }
+  );
 
-      if (
-        !peerConnections.has(
-          peerId
-        )
-      ) {
-        return;
-      }
+  voiceButton.addEventListener(
+    "mouseleave",
+    () => {
+      if (voiceRecording) {
+        voiceRecordingCancelled =
+          true;
 
-      const person =
-        document.createElement(
-          "span"
+        stopVoiceRecording(
+          true
         );
+      }
+    }
+  );
 
-      person.className =
-        "voice-person";
+  voiceButton.addEventListener(
+    "touchstart",
+    event => {
+      event.preventDefault();
 
-      person.id =
-        "voice-person-" +
-        peerId;
+      startVoiceRecording();
+    },
+    {
+      passive: false
+    }
+  );
 
-      person.textContent =
-        "🎙️ " +
-        name;
+  voiceButton.addEventListener(
+    "touchend",
+    event => {
+      event.preventDefault();
 
-      voiceParticipants.appendChild(
-        person
+      stopVoiceRecording(
+        false
+      );
+    },
+    {
+      passive: false
+    }
+  );
+
+  voiceButton.addEventListener(
+    "touchcancel",
+    () => {
+      stopVoiceRecording(
+        true
       );
     }
   );
-}
 
-// --------------------------------------------------
-// VOICE TALKING INDICATOR
-// --------------------------------------------------
+  voiceButton.addEventListener(
+    "contextmenu",
+    event => {
+      event.preventDefault();
+    }
+  );
 
-function setVoicePersonTalking(
-  peerId,
-  talking
-) {
-
-  const element =
-    document.getElementById(
-      "voice-person-" +
-      peerId
-    );
-
-  if (!element) {
-    return;
-  }
-
-  element.classList.toggle(
-    "talking",
-    Boolean(talking)
+  voiceButton.addEventListener(
+    "dragstart",
+    event => {
+      event.preventDefault();
+    }
   );
 }
 
 // ==================================================
-// AUTO CLEANUP WHEN PAGE CLOSES
+// INITIAL VOICE UI
+// ==================================================
+
+updateVoiceNoteUI();
+
+// ==================================================
+// AUTO CLEANUP
 // ==================================================
 
 window.addEventListener(
   "beforeunload",
   () => {
+    if (
+      mediaRecorder &&
+      mediaRecorder.state !==
+      "inactive"
+    ) {
+      try {
+        mediaRecorder.stop();
+      } catch (_) {}
+    }
 
-    if (voiceEnabled) {
-
-      socket.emit(
-        "voice:leave"
-      );
+    if (voiceStream) {
+      voiceStream
+        .getTracks()
+        .forEach(
+          track => {
+            track.stop();
+          }
+        );
     }
   }
 );
