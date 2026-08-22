@@ -144,88 +144,79 @@ function getPlayerName() {
 // CREATE ROOM
 // ==================================================
 
-if ($("create")) {
-  $("create").onclick = () => {
-    const playerName = getPlayerName();
+$("create").onclick = () => {
+  const playerName = getPlayerName();
 
-    if (playerName.length < 2) {
-      return error(
-        $("homeError"),
-        "Enter a name with at least 2 characters."
-      );
-    }
+  if (playerName.length < 2) {
+    return error(
+      $("homeError"),
+      "Enter a name with at least 2 characters."
+    );
+  }
 
-    error($("homeError"), "");
+  error($("homeError"), "");
 
-    socket.emit("room:create", {
-      name: playerName
-    });
-  };
-}
+  socket.emit("room:create", {
+    name: playerName
+  });
+};
 
 // ==================================================
 // JOIN ROOM
 // ==================================================
 
-if ($("join")) {
-  $("join").onclick = () => {
-    const playerName = getPlayerName();
+$("join").onclick = () => {
+  const playerName = getPlayerName();
 
-    const code = $("code")
-      ? $("code").value.trim().toUpperCase()
-      : "";
+  const code = $("code")
+    .value
+    .trim()
+    .toUpperCase();
 
-    if (playerName.length < 2) {
-      return error(
-        $("homeError"),
-        "Enter a name with at least 2 characters."
-      );
-    }
+  if (playerName.length < 2) {
+    return error(
+      $("homeError"),
+      "Enter a name with at least 2 characters."
+    );
+  }
 
-    if (!/^[A-Z0-9]{4}$/.test(code)) {
-      return error(
-        $("homeError"),
-        "Enter the 4-character room code."
-      );
-    }
+  if (!/^[A-Z0-9]{4}$/.test(code)) {
+    return error(
+      $("homeError"),
+      "Enter the 4-character room code."
+    );
+  }
 
-    error($("homeError"), "");
+  error($("homeError"), "");
 
-    socket.emit("room:join", {
-      name: playerName,
-      code: code
-    });
-  };
-}
+  socket.emit("room:join", {
+    name: playerName,
+    code: code
+  });
+};
 
 // ==================================================
 // INPUT CONTROLS
 // ==================================================
 
-if ($("code")) {
-  $("code").oninput = event => {
-    event.target.value = event.target.value
-      .replace(/[^a-z0-9]/gi, "")
-      .slice(0, 4)
-      .toUpperCase();
-  };
-}
+$("code").oninput = event => {
+  event.target.value = event.target.value
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(0, 4)
+    .toUpperCase();
+};
 
-if ($("name")) {
-  $("name").onkeydown = event => {
-    if (event.key === "Enter" && $("create")) {
-      $("create").click();
-    }
-  };
-}
+$("name").onkeydown = event => {
+  if (event.key === "Enter") {
+    $("create").click();
+  }
+};
 
-if ($("code")) {
-  $("code").onkeydown = event => {
-    if (event.key === "Enter" && $("join")) {
-      $("join").click();
-    }
-  };
-}
+$("code").onkeydown = event => {
+  if (event.key === "Enter") {
+    $("join").click();
+  }
+};
 
 // ==================================================
 // ROOM CREATED
@@ -234,9 +225,7 @@ if ($("code")) {
 socket.on("room:created", ({ code }) => {
   show("lobby");
 
-  if ($("roomCode")) {
-    $("roomCode").textContent = code;
-  }
+  $("roomCode").textContent = code;
 
   toast("Room created: " + code);
 
@@ -250,9 +239,7 @@ socket.on("room:created", ({ code }) => {
 socket.on("room:joined", ({ code }) => {
   show("lobby");
 
-  if ($("roomCode")) {
-    $("roomCode").textContent = code;
-  }
+  $("roomCode").textContent = code;
 
   toast("Joined room: " + code);
 
@@ -284,6 +271,7 @@ socket.on("room:update", state => {
   updateChatVisibility();
 
   if (state.status === "lobby") {
+
     clearInterval(tickTimer);
 
     answering = false;
@@ -327,6 +315,7 @@ socket.on("room:update", state => {
 // ==================================================
 
 function renderLobby(state) {
+
   const list = $("players");
 
   if (!list) {
@@ -336,6 +325,7 @@ function renderLobby(state) {
   list.innerHTML = "";
 
   state.players.forEach(player => {
+
     const row =
       document.createElement("div");
 
@@ -365,6 +355,7 @@ function renderLobby(state) {
       player.name;
 
     if (player.id === state.hostId) {
+
       const host =
         document.createElement("span");
 
@@ -416,11 +407,13 @@ function renderLobby(state) {
     );
 
   if ($("ready")) {
+
     $("ready").hidden =
       state.status !== "lobby";
   }
 
   if ($("start")) {
+
     $("start").hidden =
       !(
         state.hostId === myId &&
@@ -429,6 +422,7 @@ function renderLobby(state) {
   }
 
   if ($("ready")) {
+
     $("ready").textContent =
       me && me.ready
         ? "✓ READY"
@@ -439,6 +433,7 @@ function renderLobby(state) {
     state.hostId === myId &&
     $("start")
   ) {
+
     const everyoneReady =
       state.players.length >= 2 &&
       state.players.every(
@@ -459,108 +454,103 @@ function renderLobby(state) {
 // READY
 // ==================================================
 
-if ($("ready")) {
-  $("ready").onclick = () => {
-    if (!room) {
-      return;
-    }
+$("ready").onclick = () => {
 
-    if (room.status !== "lobby") {
-      return;
-    }
+  if (!room) {
+    return;
+  }
 
-    socket.emit("player:ready");
-  };
-}
+  if (room.status !== "lobby") {
+    return;
+  }
+
+  socket.emit("player:ready");
+};
 
 // ==================================================
 // START GAME
 // ==================================================
 
-if ($("start")) {
-  $("start").onclick = () => {
-    if (!room) {
-      return;
-    }
+$("start").onclick = () => {
 
-    if (room.status !== "lobby") {
-      return;
-    }
+  if (!room) {
+    return;
+  }
 
-    if (room.hostId !== myId) {
-      return;
-    }
+  if (room.status !== "lobby") {
+    return;
+  }
 
-    socket.emit("game:start");
-  };
-}
+  if (room.hostId !== myId) {
+    return;
+  }
+
+  socket.emit("game:start");
+};
 
 // ==================================================
 // LEAVE ROOM
 // ==================================================
 
-if ($("leave")) {
-  $("leave").onclick = () => {
-    stopVoiceRecording();
+$("leave").onclick = () => {
 
-    socket.emit("room:leave");
+  stopVoiceRecording();
 
-    clearInterval(tickTimer);
-    clearInterval(startTimer);
+  socket.emit("room:leave");
 
-    room = null;
+  clearInterval(tickTimer);
+  clearInterval(startTimer);
 
-    answering = false;
+  room = null;
 
-    currentRemaining = 60000;
+  answering = false;
 
-    updateTimer(60000);
+  currentRemaining = 60000;
 
-    closeChat();
+  updateTimer(60000);
 
-    clearChat();
+  closeChat();
 
-    updateChatVisibility();
+  clearChat();
 
-    show("home");
-  };
-}
+  updateChatVisibility();
+
+  show("home");
+};
 
 // ==================================================
 // GAME STARTING
 // ==================================================
 
 socket.on("game:starting", () => {
+
   clearInterval(startTimer);
 
   show("starting");
 
   let number = 3;
 
-  if ($("startNumber")) {
-    $("startNumber").textContent =
-      number;
-  }
+  $("startNumber").textContent =
+    number;
 
   startTimer =
     setInterval(() => {
+
       number--;
 
       if (number <= 0) {
+
         clearInterval(startTimer);
 
-        if ($("startNumber")) {
-          $("startNumber").textContent =
-            "💣";
-        }
+        $("startNumber").textContent =
+          "💣";
 
         return;
       }
 
-      if ($("startNumber")) {
-        $("startNumber").textContent =
-          number;
-      }
+      $("startNumber").textContent =
+        number;
+
     }, 800);
 });
 
@@ -569,6 +559,7 @@ socket.on("game:starting", () => {
 // ==================================================
 
 socket.on("game:state", state => {
+
   clearInterval(tickTimer);
 
   show("game");
@@ -576,35 +567,31 @@ socket.on("game:state", state => {
   answering = false;
 
   if (room) {
+
     room.status = "game";
 
     room.bombHolder =
       state.holderId;
   }
 
-  if ($("round")) {
-    $("round").textContent =
-      state.round;
-  }
+  $("round").textContent =
+    state.round;
 
   if (state.holderId === myId) {
-    if ($("holder")) {
-      $("holder").textContent =
-        "🔥 YOU HAVE THE BOMB";
-    }
+
+    $("holder").textContent =
+      "🔥 YOU HAVE THE BOMB";
+
   } else {
-    if ($("holder")) {
-      $("holder").textContent =
-        "💣 " +
-        state.holderName +
-        " HAS THE BOMB";
-    }
+
+    $("holder").textContent =
+      "💣 " +
+      state.holderName +
+      " HAS THE BOMB";
   }
 
-  if ($("question")) {
-    $("question").textContent =
-      state.question;
-  }
+  $("question").textContent =
+    state.question;
 
   currentRemaining =
     Number(state.remainingMs);
@@ -612,6 +599,7 @@ socket.on("game:state", state => {
   if (
     !Number.isFinite(currentRemaining)
   ) {
+
     currentRemaining = 60000;
   }
 
@@ -624,6 +612,7 @@ socket.on("game:state", state => {
   );
 
   if (typeof renderScore === "function") {
+
     renderScore(
       state.players || []
     );
@@ -637,6 +626,7 @@ socket.on("game:state", state => {
 // ==================================================
 
 function renderAnswers(answers) {
+
   const box = $("answers");
 
   if (!box) {
@@ -647,14 +637,12 @@ function renderAnswers(answers) {
 
   answers.forEach(
     (answerText, index) => {
+
       const button =
         document.createElement("button");
 
       button.className =
         "answer";
-
-      button.type =
-        "button";
 
       button.textContent =
         String.fromCharCode(65 + index) +
@@ -675,6 +663,7 @@ function renderAnswers(answers) {
 // ==================================================
 
 function answer(index) {
+
   if (answering) {
     return;
   }
@@ -715,6 +704,7 @@ function answer(index) {
 // ==================================================
 
 function startLocalTimer() {
+
   clearInterval(tickTimer);
 
   let lastServerTime =
@@ -725,6 +715,7 @@ function startLocalTimer() {
 
   tickTimer =
     setInterval(() => {
+
       const now =
         Date.now();
 
@@ -742,6 +733,7 @@ function startLocalTimer() {
       updateTimer(
         remaining
       );
+
     }, 50);
 
   updateTimer(
@@ -756,6 +748,7 @@ function startLocalTimer() {
 socket.on(
   "game:tick",
   data => {
+
     if (!data) {
       return;
     }
@@ -786,6 +779,7 @@ socket.on(
 // ==================================================
 
 function updateTimer(ms) {
+
   const timer =
     $("timer");
 
@@ -818,6 +812,7 @@ function updateTimer(ms) {
   );
 
   if ($("danger")) {
+
     $("danger")
       .classList
       .toggle(
@@ -827,7 +822,9 @@ function updateTimer(ms) {
   }
 
   if ($("bomb")) {
+
     if (danger) {
+
       const scale =
         1 +
         (3 - seconds) *
@@ -840,7 +837,9 @@ function updateTimer(ms) {
 
       $("bomb").style.transform =
         `scale(${scale}) rotate(${rotation}deg)`;
+
     } else {
+
       $("bomb").style.transform =
         "";
     }
@@ -854,16 +853,18 @@ function updateTimer(ms) {
 socket.on(
   "game:correct",
   data => {
-    if ($("gameMessage")) {
-      if (data.playerId === myId) {
-        $("gameMessage").textContent =
-          "✓ Correct! Passing the bomb...";
-      } else {
-        $("gameMessage").textContent =
-          "✓ " +
-          data.playerName +
-          " answered correctly.";
-      }
+
+    if (data.playerId === myId) {
+
+      $("gameMessage").textContent =
+        "✓ Correct! Passing the bomb...";
+
+    } else {
+
+      $("gameMessage").textContent =
+        "✓ " +
+        data.playerName +
+        " answered correctly.";
     }
 
     document
@@ -881,6 +882,7 @@ socket.on(
 socket.on(
   "game:boom",
   data => {
+
     clearInterval(tickTimer);
 
     answering = false;
@@ -891,30 +893,31 @@ socket.on(
 
     show("boom");
 
-    if ($("boomTitle")) {
-      $("boomTitle").textContent =
-        "💥 BOOM!";
+    $("boomTitle").textContent =
+      "💥 BOOM!";
+
+    if (data.playerId === myId) {
+
+      $("boomText").textContent =
+        "You were eliminated!";
+
+    } else {
+
+      $("boomText").textContent =
+        data.playerName +
+        " was eliminated!";
     }
 
-    if ($("boomText")) {
-      if (data.playerId === myId) {
-        $("boomText").textContent =
-          "You were eliminated!";
-      } else {
-        $("boomText").textContent =
-          data.playerName +
-          " was eliminated!";
-      }
+    if (data.reason === "WRONG") {
 
-      if (data.reason === "WRONG") {
-        $("boomText").textContent +=
-          " Wrong answer.";
-      }
+      $("boomText").textContent +=
+        " Wrong answer.";
+    }
 
-      if (data.reason === "TIME") {
-        $("boomText").textContent +=
-          " Time ran out.";
-      }
+    if (data.reason === "TIME") {
+
+      $("boomText").textContent +=
+        " Time ran out.";
     }
   }
 );
@@ -926,25 +929,28 @@ socket.on(
 socket.on(
   "game:winner",
   data => {
+
     clearInterval(tickTimer);
 
     answering = false;
 
     show("winner");
 
-    if ($("winnerName")) {
-      if (data.winner) {
-        $("winnerName").textContent =
-          data.winner.id === myId
-            ? "YOU!"
-            : data.winner.name;
-      } else {
-        $("winnerName").textContent =
-          "NO WINNER";
-      }
+    if (data.winner) {
+
+      $("winnerName").textContent =
+        data.winner.id === myId
+          ? "YOU!"
+          : data.winner.name;
+
+    } else {
+
+      $("winnerName").textContent =
+        "NO WINNER";
     }
 
     if (typeof renderScore === "function") {
+
       renderScore(
         data.players || []
       );
@@ -956,25 +962,25 @@ socket.on(
 // PLAY AGAIN
 // ==================================================
 
-if ($("playAgain")) {
-  $("playAgain").onclick = () => {
-    if (!room) {
-      toast(
-        "You are no longer in the room."
-      );
+$("playAgain").onclick = () => {
 
-      return;
-    }
+  if (!room) {
 
-    if (room.status !== "finished") {
-      return;
-    }
-
-    socket.emit(
-      "game:playAgain"
+    toast(
+      "You are no longer in the room."
     );
-  };
-}
+
+    return;
+  }
+
+  if (room.status !== "finished") {
+    return;
+  }
+
+  socket.emit(
+    "game:playAgain"
+  );
+};
 
 // ==================================================
 // LOBBY RETURNED
@@ -983,6 +989,7 @@ if ($("playAgain")) {
 socket.on(
   "lobby:returned",
   ({ code }) => {
+
     clearInterval(tickTimer);
 
     clearInterval(startTimer);
@@ -994,6 +1001,7 @@ socket.on(
     updateTimer(60000);
 
     if (room) {
+
       room.status =
         "lobby";
 
@@ -1002,6 +1010,7 @@ socket.on(
     }
 
     if ($("roomCode")) {
+
       $("roomCode").textContent =
         code;
     }
@@ -1018,33 +1027,32 @@ socket.on(
 // MAIN MENU
 // ==================================================
 
-if ($("menu")) {
-  $("menu").onclick = () => {
-    stopVoiceRecording();
+$("menu").onclick = () => {
 
-    socket.emit(
-      "room:leave"
-    );
+  stopVoiceRecording();
 
-    clearInterval(tickTimer);
+  socket.emit(
+    "room:leave"
+  );
 
-    clearInterval(startTimer);
+  clearInterval(tickTimer);
 
-    room = null;
+  clearInterval(startTimer);
 
-    answering = false;
+  room = null;
 
-    currentRemaining = 60000;
+  answering = false;
 
-    closeChat();
+  currentRemaining = 60000;
 
-    clearChat();
+  closeChat();
 
-    updateTimer(60000);
+  clearChat();
 
-    location.reload();
-  };
-}
+  updateTimer(60000);
+
+  location.reload();
+};
 
 // ==================================================
 // SERVER ERROR
@@ -1053,15 +1061,19 @@ if ($("menu")) {
 socket.on(
   "error:message",
   msg => {
+
     let active;
 
     if (
       screens.home &&
       screens.home.classList.contains("active")
     ) {
+
       active =
         $("homeError");
+
     } else {
+
       active =
         $("lobbyError");
     }
@@ -1076,31 +1088,13 @@ socket.on(
 );
 
 // ==================================================
-// VOICE NOTE ERROR
-// ==================================================
-
-socket.on(
-  "voice-note:error",
-  message => {
-    console.error(
-      "Voice note error:",
-      message
-    );
-
-    toast(
-      message ||
-      "Could not send voice note."
-    );
-  }
-);
-
-// ==================================================
 // DISCONNECT
 // ==================================================
 
 socket.on(
   "disconnect",
   () => {
+
     clearInterval(tickTimer);
 
     clearInterval(startTimer);
@@ -1111,6 +1105,7 @@ socket.on(
       screens.home &&
       !screens.home.classList.contains("active")
     ) {
+
       toast(
         "Disconnected from server."
       );
@@ -1148,6 +1143,7 @@ const chatBadge =
 // ==================================================
 
 function openChat() {
+
   if (!room) {
     return;
   }
@@ -1155,6 +1151,7 @@ function openChat() {
   chatOpen = true;
 
   if (chatPanel) {
+
     chatPanel.classList.add(
       "open"
     );
@@ -1170,11 +1167,13 @@ function openChat() {
   updateChatBadge();
 
   setTimeout(() => {
+
     if (chatInput) {
       chatInput.focus();
     }
 
     scrollChatToBottom();
+
   }, 50);
 }
 
@@ -1183,9 +1182,11 @@ function openChat() {
 // ==================================================
 
 function closeChat() {
+
   chatOpen = false;
 
   if (chatPanel) {
+
     chatPanel.classList.remove(
       "open"
     );
@@ -1202,12 +1203,15 @@ function closeChat() {
 // ==================================================
 
 if (chatLauncher) {
+
   chatLauncher.onclick = () => {
+
     if (chatOpen) {
       closeChat();
     } else {
       openChat();
     }
+
   };
 }
 
@@ -1216,6 +1220,7 @@ if (chatLauncher) {
 // ==================================================
 
 if (chatClose) {
+
   chatClose.onclick = () => {
     closeChat();
   };
@@ -1226,9 +1231,11 @@ if (chatClose) {
 // ==================================================
 
 if (chatForm) {
+
   chatForm.addEventListener(
     "submit",
     event => {
+
       event.preventDefault();
 
       sendChatMessage();
@@ -1241,6 +1248,7 @@ if (chatForm) {
 // ==================================================
 
 function sendChatMessage() {
+
   if (!room) {
     return;
   }
@@ -1275,6 +1283,7 @@ function sendChatMessage() {
 socket.on(
   "chat:history",
   messages => {
+
     chatMessages =
       Array.isArray(messages)
         ? messages
@@ -1291,6 +1300,7 @@ socket.on(
 socket.on(
   "chat:message",
   message => {
+
     if (!message) {
       return;
     }
@@ -1303,6 +1313,7 @@ socket.on(
       chatMessages.length >
       100
     ) {
+
       chatMessages =
         chatMessages.slice(-100);
     }
@@ -1313,6 +1324,7 @@ socket.on(
       message.playerId !== myId &&
       !chatOpen
     ) {
+
       unreadMessages++;
 
       updateChatBadge();
@@ -1333,6 +1345,7 @@ socket.on(
 socket.on(
   "chat:voice",
   message => {
+
     if (!message) {
       return;
     }
@@ -1348,6 +1361,7 @@ socket.on(
       chatMessages.length >
       100
     ) {
+
       chatMessages =
         chatMessages.slice(-100);
     }
@@ -1358,6 +1372,7 @@ socket.on(
       message.playerId !== myId &&
       !chatOpen
     ) {
+
       unreadMessages++;
 
       updateChatBadge();
@@ -1375,6 +1390,7 @@ socket.on(
 // ==================================================
 
 function renderChat() {
+
   if (!chatMessagesBox) {
     return;
   }
@@ -1384,6 +1400,7 @@ function renderChat() {
   if (
     chatMessages.length === 0
   ) {
+
     const empty =
       document.createElement(
         "div"
@@ -1404,9 +1421,11 @@ function renderChat() {
 
   chatMessages.forEach(
     message => {
+
       if (
         message.type === "voice"
       ) {
+
         renderVoiceNote(
           message
         );
@@ -1425,6 +1444,7 @@ function renderChat() {
       if (
         message.playerId === myId
       ) {
+
         wrapper.classList.add(
           "mine"
         );
@@ -1487,6 +1507,7 @@ function renderChat() {
 // ==================================================
 
 function renderVoiceNote(message) {
+
   const wrapper =
     document.createElement(
       "div"
@@ -1498,6 +1519,7 @@ function renderVoiceNote(message) {
   if (
     message.playerId === myId
   ) {
+
     wrapper.classList.add(
       "mine"
     );
@@ -1546,15 +1568,17 @@ function renderVoiceNote(message) {
   waveform.className =
     "voice-waveform";
 
-  const bars = [
-    8, 14, 22, 12, 18,
-    28, 16, 24, 34, 20,
-    13, 25, 18, 30, 15,
-    22, 11, 26, 17, 9,
-    21, 29, 14, 19, 12
-  ];
+  const bars =
+    [
+      8, 14, 22, 12, 18,
+      28, 16, 24, 34, 20,
+      13, 25, 18, 30, 15,
+      22, 11, 26, 17, 9,
+      21, 29, 14, 19, 12
+    ];
 
   bars.forEach(height => {
+
     const bar =
       document.createElement(
         "span"
@@ -1611,26 +1635,20 @@ function renderVoiceNote(message) {
   let audio = null;
 
   if (message.audio) {
-    try {
-      audio =
-        new Audio(
-          message.audio
-        );
 
-      audio.preload =
-        "metadata";
-    } catch (err) {
-      console.error(
-        "Audio creation error:",
-        err
+    audio =
+      new Audio(
+        message.audio
       );
 
-      audio = null;
-    }
+    audio.preload =
+      "metadata";
   }
 
   playButton.onclick = () => {
+
     if (!audio) {
+
       toast(
         "Voice note is unavailable."
       );
@@ -1639,22 +1657,23 @@ function renderVoiceNote(message) {
     }
 
     if (audio.paused) {
+
       audio.play()
         .then(() => {
+
           playButton.textContent =
             "❚❚";
+
         })
-        .catch(err => {
-          console.error(
-            "Audio playback error:",
-            err
-          );
+        .catch(() => {
 
           toast(
             "Could not play voice note."
           );
         });
+
     } else {
+
       audio.pause();
 
       playButton.textContent =
@@ -1663,12 +1682,15 @@ function renderVoiceNote(message) {
   };
 
   if (audio) {
+
     audio.onended = () => {
+
       playButton.textContent =
         "▶";
     };
 
     audio.ontimeupdate = () => {
+
       if (
         !audio.duration ||
         !Number.isFinite(audio.duration)
@@ -1695,6 +1717,7 @@ function renderVoiceNote(message) {
 // ==================================================
 
 function formatVoiceDuration(seconds) {
+
   const value =
     Math.max(
       0,
@@ -1724,6 +1747,7 @@ function formatVoiceDuration(seconds) {
 // ==================================================
 
 function formatChatTime(timestamp) {
+
   if (!timestamp) {
     return "";
   }
@@ -1745,6 +1769,7 @@ function formatChatTime(timestamp) {
 // ==================================================
 
 function scrollChatToBottom() {
+
   if (!chatMessagesBox) {
     return;
   }
@@ -1758,6 +1783,7 @@ function scrollChatToBottom() {
 // ==================================================
 
 function updateChatBadge() {
+
   if (!chatBadge) {
     return;
   }
@@ -1765,6 +1791,7 @@ function updateChatBadge() {
   if (
     unreadMessages <= 0
   ) {
+
     chatBadge.classList.remove(
       "show"
     );
@@ -1790,6 +1817,7 @@ function updateChatBadge() {
 // ==================================================
 
 function clearChat() {
+
   chatMessages = [];
 
   unreadMessages = 0;
@@ -1810,11 +1838,13 @@ const voiceStatus =
   $("voiceStatus");
 
 function updateVoiceNoteUI() {
+
   if (!voiceButton) {
     return;
   }
 
   if (voiceRecording) {
+
     voiceButton.textContent =
       "🔴 " +
       formatVoiceDuration(
@@ -1830,12 +1860,15 @@ function updateVoiceNoteUI() {
     );
 
     if (voiceStatus) {
+
       voiceStatus.textContent =
         voiceRecordingCancelled
           ? "Release to cancel"
           : "Release to send";
     }
+
   } else {
+
     voiceButton.textContent =
       "🎤";
 
@@ -1848,6 +1881,7 @@ function updateVoiceNoteUI() {
     );
 
     if (voiceStatus) {
+
       voiceStatus.textContent =
         "Hold to record";
     }
@@ -1859,6 +1893,7 @@ function updateVoiceNoteUI() {
 // ==================================================
 
 async function startVoiceRecording(event) {
+
   if (
     event &&
     event.button !== undefined &&
@@ -1868,6 +1903,7 @@ async function startVoiceRecording(event) {
   }
 
   if (!room) {
+
     toast(
       "Join a room first."
     );
@@ -1879,22 +1915,13 @@ async function startVoiceRecording(event) {
     return;
   }
 
-  if (
-    typeof MediaRecorder ===
-    "undefined"
-  ) {
-    toast(
-      "Voice recording is not supported by this browser."
-    );
-
-    return;
-  }
-
   try {
+
     if (
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
     ) {
+
       toast(
         "Your browser does not support voice recording."
       );
@@ -1939,33 +1966,21 @@ async function startVoiceRecording(event) {
 
     mediaRecorder.ondataavailable =
       event => {
+
         if (
           event.data &&
           event.data.size > 0
         ) {
+
           voiceChunks.push(
             event.data
           );
         }
       };
 
-    mediaRecorder.onerror =
-      event => {
-        console.error(
-          "MediaRecorder error:",
-          event
-        );
-
-        toast(
-          "Voice recording error."
-        );
-
-        voiceRecordingCancelled =
-          true;
-      };
-
     mediaRecorder.onstop =
       async () => {
+
         const wasCancelled =
           voiceRecordingCancelled;
 
@@ -1981,6 +1996,7 @@ async function startVoiceRecording(event) {
         updateVoiceNoteUI();
 
         if (voiceStream) {
+
           voiceStream
             .getTracks()
             .forEach(
@@ -1993,9 +2009,8 @@ async function startVoiceRecording(event) {
         }
 
         if (wasCancelled) {
-          voiceChunks = [];
 
-          mediaRecorder = null;
+          voiceChunks = [];
 
           return;
         }
@@ -2003,26 +2018,21 @@ async function startVoiceRecording(event) {
         if (
           !voiceChunks.length
         ) {
-          mediaRecorder = null;
 
           return;
         }
-
-        const mimeType =
-          mediaRecorder.mimeType ||
-          "audio/webm";
 
         const blob =
           new Blob(
             voiceChunks,
             {
-              type: mimeType
+              type:
+                mediaRecorder.mimeType ||
+                "audio/webm"
             }
           );
 
         voiceChunks = [];
-
-        mediaRecorder = null;
 
         await sendVoiceNote(
           blob,
@@ -2036,6 +2046,7 @@ async function startVoiceRecording(event) {
 
     voiceRecordingTimer =
       setInterval(() => {
+
         voiceRecordingSeconds++;
 
         updateVoiceNoteUI();
@@ -2044,13 +2055,16 @@ async function startVoiceRecording(event) {
           voiceRecordingSeconds >=
           MAX_VOICE_SECONDS
         ) {
+
           stopVoiceRecording(
             false
           );
         }
+
       }, 1000);
 
   } catch (err) {
+
     console.error(
       "Voice recording error:",
       err
@@ -2063,6 +2077,7 @@ async function startVoiceRecording(event) {
     );
 
     if (voiceStream) {
+
       voiceStream
         .getTracks()
         .forEach(
@@ -2074,8 +2089,6 @@ async function startVoiceRecording(event) {
       voiceStream = null;
     }
 
-    mediaRecorder = null;
-
     updateVoiceNoteUI();
 
     if (
@@ -2083,26 +2096,13 @@ async function startVoiceRecording(event) {
       err.name ===
       "NotAllowedError"
     ) {
+
       toast(
         "Microphone permission was denied."
       );
-    } else if (
-      err &&
-      err.name ===
-      "NotFoundError"
-    ) {
-      toast(
-        "No microphone was found."
-      );
-    } else if (
-      err &&
-      err.name ===
-      "NotReadableError"
-    ) {
-      toast(
-        "Your microphone is already being used."
-      );
+
     } else {
+
       toast(
         "Could not access your microphone."
       );
@@ -2115,10 +2115,12 @@ async function startVoiceRecording(event) {
 // ==================================================
 
 function getVoiceRecorderOptions() {
+
   if (
     typeof MediaRecorder ===
     "undefined"
   ) {
+
     return null;
   }
 
@@ -2131,11 +2133,13 @@ function getVoiceRecorderOptions() {
   for (
     const type of formats
   ) {
+
     if (
       MediaRecorder.isTypeSupported(
         type
       )
     ) {
+
       return {
         mimeType: type
       };
@@ -2152,6 +2156,7 @@ function getVoiceRecorderOptions() {
 function stopVoiceRecording(
   cancel = true
 ) {
+
   if (!mediaRecorder) {
     return;
   }
@@ -2160,6 +2165,7 @@ function stopVoiceRecording(
     mediaRecorder.state ===
     "inactive"
   ) {
+
     return;
   }
 
@@ -2170,14 +2176,7 @@ function stopVoiceRecording(
     voiceRecordingTimer
   );
 
-  try {
-    mediaRecorder.stop();
-  } catch (err) {
-    console.error(
-      "Could not stop recording:",
-      err
-    );
-  }
+  mediaRecorder.stop();
 }
 
 // ==================================================
@@ -2188,27 +2187,20 @@ async function sendVoiceNote(
   blob,
   duration
 ) {
+
   if (!room) {
     return;
   }
 
   try {
+
     const MAX_SIZE =
-      2 * 1024 * 1024;
+      5 * 1024 * 1024;
 
     if (blob.size > MAX_SIZE) {
-      toast(
-        "Voice note is too large. Maximum size is 2 MB."
-      );
 
-      return;
-    }
-
-    if (
-      duration <= 0
-    ) {
       toast(
-        "Voice note is too short."
+        "Voice note is too large."
       );
 
       return;
@@ -2218,6 +2210,7 @@ async function sendVoiceNote(
       new FileReader();
 
     reader.onload = () => {
+
       const audio =
         reader.result;
 
@@ -2229,20 +2222,19 @@ async function sendVoiceNote(
             duration
           ),
         mimeType:
-          blob.type || "audio/webm"
+          blob.type
       };
 
-      // IMPORTANT:
-      // The server listens for "voice-note:send".
       socket.emit(
-        "voice-note:send",
+        "chat:voice",
         message
       );
     };
 
     reader.onerror = () => {
+
       toast(
-        "Could not read voice note."
+        "Could not send voice note."
       );
     };
 
@@ -2251,6 +2243,7 @@ async function sendVoiceNote(
     );
 
   } catch (err) {
+
     console.error(
       "Voice note send error:",
       err
@@ -2267,9 +2260,11 @@ async function sendVoiceNote(
 // ==================================================
 
 if (voiceButton) {
+
   voiceButton.addEventListener(
     "mousedown",
     event => {
+
       startVoiceRecording(
         event
       );
@@ -2279,6 +2274,7 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "mouseup",
     () => {
+
       stopVoiceRecording(
         false
       );
@@ -2288,7 +2284,9 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "mouseleave",
     () => {
+
       if (voiceRecording) {
+
         voiceRecordingCancelled =
           true;
 
@@ -2302,6 +2300,7 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "touchstart",
     event => {
+
       event.preventDefault();
 
       startVoiceRecording();
@@ -2314,6 +2313,7 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "touchend",
     event => {
+
       event.preventDefault();
 
       stopVoiceRecording(
@@ -2328,6 +2328,7 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "touchcancel",
     () => {
+
       stopVoiceRecording(
         true
       );
@@ -2337,13 +2338,7 @@ if (voiceButton) {
   voiceButton.addEventListener(
     "contextmenu",
     event => {
-      event.preventDefault();
-    }
-  );
 
-  voiceButton.addEventListener(
-    "dragstart",
-    event => {
       event.preventDefault();
     }
   );
@@ -2362,17 +2357,20 @@ updateVoiceNoteUI();
 window.addEventListener(
   "beforeunload",
   () => {
+
     if (
       mediaRecorder &&
       mediaRecorder.state !==
       "inactive"
     ) {
+
       try {
         mediaRecorder.stop();
       } catch (_) {}
     }
 
     if (voiceStream) {
+
       voiceStream
         .getTracks()
         .forEach(
