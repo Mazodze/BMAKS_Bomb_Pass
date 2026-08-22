@@ -12,6 +12,35 @@ let currentRemaining = 60000;
 
 let answering = false;
 
+// ==================================================
+// VOICE CHAT
+// ==================================================
+
+let localStream = null;
+let voiceEnabled = false;
+
+const peerConnections = new Map();
+const peerNames = new Map();
+
+const rtcConfig = {
+  iceServers: [
+    {
+      urls: "stun:stun.l.google.com:19302"
+    },
+    {
+      urls: "stun:stun1.l.google.com:19302"
+    }
+  ]
+};
+
+// ==================================================
+// CHAT
+// ==================================================
+
+let chatOpen = false;
+let unreadMessages = 0;
+let chatMessages = [];
+
 const screens = {
   home: $("home"),
   lobby: $("lobby"),
@@ -43,6 +72,29 @@ function show(name) {
   if (screens[name]) {
     screens[name].classList.add("active");
   }
+
+  updateChatVisibility();
+}
+
+// ==================================================
+// CHAT VISIBILITY
+// ==================================================
+
+function updateChatVisibility() {
+  const launcher = $("chatLauncher");
+
+  if (!launcher) {
+    return;
+  }
+
+  const inRoom =
+    room &&
+    room.code;
+
+  launcher.classList.toggle(
+    "show",
+    Boolean(inRoom)
+  );
 }
 
 // ==================================================
@@ -183,6 +235,8 @@ socket.on("room:created", ({ code }) => {
   $("roomCode").textContent = code;
 
   toast("Room created: " + code);
+
+  updateChatVisibility();
 });
 
 // ==================================================
@@ -195,6 +249,8 @@ socket.on("room:joined", ({ code }) => {
   $("roomCode").textContent = code;
 
   toast("Joined room: " + code);
+
+  updateChatVisibility();
 });
 
 // ==================================================
@@ -218,6 +274,8 @@ socket.on("room:update", state => {
   if (typeof renderScore === "function") {
     renderScore(state.players);
   }
+
+  updateChatVisibility();
 
   // ----------------------------------------------
   // ROOM RETURNED TO LOBBY
@@ -461,6 +519,8 @@ $("start").onclick = () => {
 // ==================================================
 
 $("leave").onclick = () => {
+  leaveVoice();
+
   socket.emit("room:leave");
 
   clearInterval(tickTimer);
@@ -473,6 +533,12 @@ $("leave").onclick = () => {
   currentRemaining = 60000;
 
   updateTimer(60000);
+
+  closeChat();
+
+  clearChat();
+
+  updateChatVisibility();
 
   show("home");
 };
@@ -521,24 +587,13 @@ socket.on("game:state", state => {
 
   answering = false;
 
-  // ----------------------------------------------
-  // STORE ROOM GAME STATUS LOCALLY
-  // ----------------------------------------------
-
   if (room) {
     room.status = "game";
+    room.bombHolder = state.holderId;
   }
-
-  // ----------------------------------------------
-  // ROUND
-  // ----------------------------------------------
 
   $("round").textContent =
     state.round;
-
-  // ----------------------------------------------
-  // BOMB HOLDER
-  // ----------------------------------------------
 
   if (state.holderId === myId) {
     $("holder").textContent =
@@ -550,16 +605,8 @@ socket.on("game:state", state => {
       " HAS THE BOMB";
   }
 
-  // ----------------------------------------------
-  // QUESTION
-  // ----------------------------------------------
-
   $("question").textContent =
     state.question;
-
-  // ----------------------------------------------
-  // TIMER
-  // ----------------------------------------------
 
   currentRemaining =
     Number(state.remainingMs);
@@ -574,27 +621,15 @@ socket.on("game:state", state => {
     currentRemaining
   );
 
-  // ----------------------------------------------
-  // ANSWERS
-  // ----------------------------------------------
-
   renderAnswers(
     state.answers || []
   );
-
-  // ----------------------------------------------
-  // SCORE
-  // ----------------------------------------------
 
   if (typeof renderScore === "function") {
     renderScore(
       state.players || []
     );
   }
-
-  // ----------------------------------------------
-  // START LOCAL DISPLAY
-  // ----------------------------------------------
 
   startLocalTimer();
 });
@@ -614,10 +649,12 @@ function renderAnswers(answers) {
 
   answers.forEach(
     (answerText, index) => {
+
       const button =
         document.createElement("button");
 
-      button.className = "answer";
+      button.className =
+        "answer";
 
       button.textContent =
         String.fromCharCode(65 + index) +
@@ -650,10 +687,6 @@ function answer(index) {
     return;
   }
 
-  // ----------------------------------------------
-  // ONLY THE BOMB HOLDER CAN ANSWER
-  // ----------------------------------------------
-
   if (
     room.bombHolder &&
     room.bombHolder !== myId
@@ -680,18 +713,6 @@ function answer(index) {
 // ==================================================
 // TIMER
 // ==================================================
-//
-// IMPORTANT:
-//
-// The SERVER is the source of truth.
-//
-// Every game:tick from server updates
-// currentRemaining.
-//
-// We use Date.now() locally between
-// server ticks so the timer moves smoothly.
-//
-// ==================================================
 
 function startLocalTimer() {
   clearInterval(tickTimer);
@@ -704,6 +725,7 @@ function startLocalTimer() {
 
   tickTimer =
     setInterval(() => {
+
       const now =
         Date.now();
 
@@ -736,6 +758,7 @@ function startLocalTimer() {
 socket.on(
   "game:tick",
   data => {
+
     if (!data) {
       return;
     }
@@ -807,7 +830,9 @@ function updateTimer(ms) {
   }
 
   if ($("bomb")) {
+
     if (danger) {
+
       const scale =
         1 +
         (3 - seconds) *
@@ -822,6 +847,7 @@ function updateTimer(ms) {
         `scale(${scale}) rotate(${rotation}deg)`;
 
     } else {
+
       $("bomb").style.transform =
         "";
     }
@@ -837,9 +863,12 @@ socket.on(
   data => {
 
     if (data.playerId === myId) {
+
       $("gameMessage").textContent =
         "✓ Correct! Passing the bomb...";
+
     } else {
+
       $("gameMessage").textContent =
         "✓ " +
         data.playerName +
@@ -929,6 +958,7 @@ socket.on(
     }
 
     if (typeof renderScore === "function") {
+
       renderScore(
         data.players || []
       );
@@ -939,26 +969,11 @@ socket.on(
 // ==================================================
 // PLAY AGAIN
 // ==================================================
-//
-// ANY PLAYER CAN PRESS PLAY AGAIN.
-//
-// There is NO host restriction here.
-//
-// The server checks:
-// room.status === "finished"
-//
-// The server then:
-// 1. Resets the room.
-// 2. Keeps the same room code.
-// 3. Keeps all players.
-// 4. Makes everyone NOT READY.
-// 5. Returns everyone to the lobby.
-//
-// ==================================================
 
 $("playAgain").onclick = () => {
 
   if (!room) {
+
     toast(
       "You are no longer in the room."
     );
@@ -970,7 +985,6 @@ $("playAgain").onclick = () => {
     return;
   }
 
-  // ANY PLAYER IS ALLOWED TO DO THIS.
   socket.emit(
     "game:playAgain"
   );
@@ -994,11 +1008,16 @@ socket.on(
     updateTimer(60000);
 
     if (room) {
-      room.status = "lobby";
-      room.code = code;
+
+      room.status =
+        "lobby";
+
+      room.code =
+        code;
     }
 
     if ($("roomCode")) {
+
       $("roomCode").textContent =
         code;
     }
@@ -1017,6 +1036,8 @@ socket.on(
 
 $("menu").onclick = () => {
 
+  leaveVoice();
+
   socket.emit(
     "room:leave"
   );
@@ -1029,6 +1050,12 @@ $("menu").onclick = () => {
   answering = false;
 
   currentRemaining = 60000;
+
+  closeChat();
+
+  clearChat();
+
+  updateTimer(60000);
 
   location.reload();
 };
@@ -1047,9 +1074,12 @@ socket.on(
       screens.home &&
       screens.home.classList.contains("active")
     ) {
+
       active =
         $("homeError");
+
     } else {
+
       active =
         $("lobbyError");
     }
@@ -1074,13 +1104,1287 @@ socket.on(
     clearInterval(tickTimer);
     clearInterval(startTimer);
 
+    leaveVoice();
+
     if (
       screens.home &&
       !screens.home.classList.contains("active")
     ) {
+
       toast(
         "Disconnected from server."
       );
     }
   }
 );
+
+// ==================================================
+// ==================================================
+// CHAT SYSTEM
+// ==================================================
+// ==================================================
+
+// --------------------------------------------------
+// CHAT ELEMENTS
+// --------------------------------------------------
+
+const chatLauncher =
+  $("chatLauncher");
+
+const chatPanel =
+  $("chatPanel");
+
+const chatClose =
+  $("chatClose");
+
+const chatMessagesBox =
+  $("chatMessages");
+
+const chatForm =
+  $("chatForm");
+
+const chatInput =
+  $("chatInput");
+
+const chatBadge =
+  $("chatBadge");
+
+// --------------------------------------------------
+// OPEN CHAT
+// --------------------------------------------------
+
+function openChat() {
+
+  if (!room) {
+    return;
+  }
+
+  chatOpen = true;
+
+  if (chatPanel) {
+
+    chatPanel.classList.add(
+      "open"
+    );
+
+    chatPanel.setAttribute(
+      "aria-hidden",
+      "false"
+    );
+  }
+
+  unreadMessages = 0;
+
+  updateChatBadge();
+
+  setTimeout(() => {
+
+    if (chatInput) {
+      chatInput.focus();
+    }
+
+    scrollChatToBottom();
+
+  }, 50);
+}
+
+// --------------------------------------------------
+// CLOSE CHAT
+// --------------------------------------------------
+
+function closeChat() {
+
+  chatOpen = false;
+
+  if (chatPanel) {
+
+    chatPanel.classList.remove(
+      "open"
+    );
+
+    chatPanel.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+  }
+}
+
+// --------------------------------------------------
+// CHAT BUTTON
+// --------------------------------------------------
+
+if (chatLauncher) {
+
+  chatLauncher.onclick = () => {
+
+    if (chatOpen) {
+      closeChat();
+    } else {
+      openChat();
+    }
+
+  };
+}
+
+// --------------------------------------------------
+// CLOSE BUTTON
+// --------------------------------------------------
+
+if (chatClose) {
+
+  chatClose.onclick = () => {
+    closeChat();
+  };
+}
+
+// --------------------------------------------------
+// CHAT FORM
+// --------------------------------------------------
+
+if (chatForm) {
+
+  chatForm.addEventListener(
+    "submit",
+    event => {
+
+      event.preventDefault();
+
+      sendChatMessage();
+    }
+  );
+}
+
+// --------------------------------------------------
+// SEND MESSAGE
+// --------------------------------------------------
+
+function sendChatMessage() {
+
+  if (!room) {
+    return;
+  }
+
+  if (!chatInput) {
+    return;
+  }
+
+  const message =
+    chatInput.value
+      .trim();
+
+  if (!message) {
+    return;
+  }
+
+  socket.emit(
+    "chat:send",
+    {
+      message
+    }
+  );
+
+  chatInput.value = "";
+
+  chatInput.focus();
+}
+
+// --------------------------------------------------
+// CHAT HISTORY
+// --------------------------------------------------
+
+socket.on(
+  "chat:history",
+  messages => {
+
+    chatMessages =
+      Array.isArray(messages)
+        ? messages
+        : [];
+
+    renderChat();
+
+  }
+);
+
+// --------------------------------------------------
+// NEW CHAT MESSAGE
+// --------------------------------------------------
+
+socket.on(
+  "chat:message",
+  message => {
+
+    if (!message) {
+      return;
+    }
+
+    chatMessages.push(
+      message
+    );
+
+    if (
+      chatMessages.length >
+      100
+    ) {
+
+      chatMessages =
+        chatMessages.slice(-100);
+    }
+
+    renderChat();
+
+    if (
+      message.playerId !==
+      myId &&
+      !chatOpen
+    ) {
+
+      unreadMessages++;
+
+      updateChatBadge();
+    }
+
+    if (
+      message.playerId !==
+      myId &&
+      !chatOpen
+    ) {
+
+      toast(
+        message.playerName +
+        ": " +
+        message.message
+      );
+    }
+  }
+);
+
+// --------------------------------------------------
+// RENDER CHAT
+// --------------------------------------------------
+
+function renderChat() {
+
+  if (!chatMessagesBox) {
+    return;
+  }
+
+  chatMessagesBox.innerHTML = "";
+
+  if (
+    chatMessages.length === 0
+  ) {
+
+    const empty =
+      document.createElement(
+        "div"
+      );
+
+    empty.className =
+      "chat-empty";
+
+    empty.innerHTML =
+      "No messages yet.<br>Start the conversation.";
+
+    chatMessagesBox.appendChild(
+      empty
+    );
+
+    return;
+  }
+
+  chatMessages.forEach(
+    message => {
+
+      const wrapper =
+        document.createElement(
+          "div"
+        );
+
+      wrapper.className =
+        "chat-message";
+
+      if (
+        message.playerId ===
+        myId
+      ) {
+
+        wrapper.classList.add(
+          "mine"
+        );
+      }
+
+      const name =
+        document.createElement(
+          "div"
+        );
+
+      name.className =
+        "chat-name";
+
+      name.textContent =
+        message.playerId === myId
+          ? "You"
+          : message.playerName;
+
+      const bubble =
+        document.createElement(
+          "div"
+        );
+
+      bubble.className =
+        "chat-bubble";
+
+      bubble.textContent =
+        message.message;
+
+      const time =
+        document.createElement(
+          "div"
+        );
+
+      time.className =
+        "chat-time";
+
+      time.textContent =
+        formatChatTime(
+          message.time
+        );
+
+      wrapper.append(
+        name,
+        bubble,
+        time
+      );
+
+      chatMessagesBox.appendChild(
+        wrapper
+      );
+    }
+  );
+
+  scrollChatToBottom();
+}
+
+// --------------------------------------------------
+// FORMAT CHAT TIME
+// --------------------------------------------------
+
+function formatChatTime(timestamp) {
+
+  if (!timestamp) {
+    return "";
+  }
+
+  const date =
+    new Date(timestamp);
+
+  return date.toLocaleTimeString(
+    [],
+    {
+      hour: "2-digit",
+      minute: "2-digit"
+    }
+  );
+}
+
+// --------------------------------------------------
+// SCROLL CHAT
+// --------------------------------------------------
+
+function scrollChatToBottom() {
+
+  if (!chatMessagesBox) {
+    return;
+  }
+
+  chatMessagesBox.scrollTop =
+    chatMessagesBox.scrollHeight;
+}
+
+// --------------------------------------------------
+// CHAT BADGE
+// --------------------------------------------------
+
+function updateChatBadge() {
+
+  if (!chatBadge) {
+    return;
+  }
+
+  if (
+    unreadMessages <= 0
+  ) {
+
+    chatBadge.classList.remove(
+      "show"
+    );
+
+    chatBadge.textContent =
+      "0";
+
+    return;
+  }
+
+  chatBadge.classList.add(
+    "show"
+  );
+
+  chatBadge.textContent =
+    unreadMessages > 99
+      ? "99+"
+      : String(unreadMessages);
+}
+
+// --------------------------------------------------
+// CLEAR CHAT
+// --------------------------------------------------
+
+function clearChat() {
+
+  chatMessages = [];
+
+  unreadMessages = 0;
+
+  updateChatBadge();
+
+  renderChat();
+}
+
+// ==================================================
+// ==================================================
+// VOICE CHAT
+// ==================================================
+// ==================================================
+
+// --------------------------------------------------
+// VOICE ELEMENTS
+// --------------------------------------------------
+
+const voiceButton =
+  $("voiceButton");
+
+const voiceStatus =
+  $("voiceStatus");
+
+const voiceParticipants =
+  $("voiceParticipants");
+
+// --------------------------------------------------
+// UPDATE VOICE UI
+// --------------------------------------------------
+
+function updateVoiceUI() {
+
+  if (!voiceButton) {
+    return;
+  }
+
+  if (voiceEnabled) {
+
+    voiceButton.textContent =
+      "🔇 LEAVE VOICE";
+
+    voiceButton.classList.remove(
+      "off"
+    );
+
+    if (voiceStatus) {
+
+      voiceStatus.textContent =
+        "Voice chat connected";
+    }
+
+  } else {
+
+    voiceButton.textContent =
+      "🎤 JOIN VOICE";
+
+    voiceButton.classList.add(
+      "off"
+    );
+
+    if (voiceStatus) {
+
+      voiceStatus.textContent =
+        "Voice chat is off";
+    }
+  }
+
+  renderVoiceParticipants();
+}
+
+// --------------------------------------------------
+// VOICE BUTTON
+// --------------------------------------------------
+
+if (voiceButton) {
+
+  voiceButton.onclick = async () => {
+
+    if (!room) {
+      toast(
+        "Join a room first."
+      );
+
+      return;
+    }
+
+    if (voiceEnabled) {
+
+      leaveVoice();
+
+    } else {
+
+      await joinVoice();
+    }
+
+  };
+}
+
+// --------------------------------------------------
+// JOIN VOICE
+// --------------------------------------------------
+
+async function joinVoice() {
+
+  if (voiceEnabled) {
+    return;
+  }
+
+  try {
+
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+
+      toast(
+        "Your browser does not support microphone access."
+      );
+
+      return;
+    }
+
+    localStream =
+      await navigator.mediaDevices.getUserMedia(
+        {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: false
+        }
+      );
+
+    voiceEnabled = true;
+
+    updateVoiceUI();
+
+    socket.emit(
+      "voice:join"
+    );
+
+    toast(
+      "Voice chat enabled."
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Microphone error:",
+      err
+    );
+
+    voiceEnabled = false;
+
+    localStream = null;
+
+    updateVoiceUI();
+
+    if (
+      err &&
+      err.name ===
+      "NotAllowedError"
+    ) {
+
+      toast(
+        "Microphone permission was denied."
+      );
+
+    } else {
+
+      toast(
+        "Could not access your microphone."
+      );
+    }
+  }
+}
+
+// --------------------------------------------------
+// LEAVE VOICE
+// --------------------------------------------------
+
+function leaveVoice() {
+
+  if (voiceEnabled) {
+
+    socket.emit(
+      "voice:leave"
+    );
+  }
+
+  voiceEnabled = false;
+
+  peerConnections.forEach(
+    connection => {
+
+      try {
+        connection.close();
+      } catch (_) {}
+    }
+  );
+
+  peerConnections.clear();
+
+  peerNames.clear();
+
+  if (localStream) {
+
+    localStream
+      .getTracks()
+      .forEach(
+        track => {
+          track.stop();
+        }
+      );
+
+    localStream = null;
+  }
+
+  updateVoiceUI();
+}
+
+// --------------------------------------------------
+// PARTICIPANTS LIST
+// --------------------------------------------------
+
+socket.on(
+  "voice:participants",
+  async participants => {
+
+    if (!voiceEnabled) {
+      return;
+    }
+
+    if (!Array.isArray(participants)) {
+      return;
+    }
+
+    for (
+      const participant of participants
+    ) {
+
+      if (
+        !participant ||
+        !participant.peerId
+      ) {
+        continue;
+      }
+
+      peerNames.set(
+        participant.peerId,
+        participant.peerName ||
+        "Player"
+      );
+
+      await createOffer(
+        participant.peerId
+      );
+    }
+
+    renderVoiceParticipants();
+  }
+);
+
+// --------------------------------------------------
+// NEW VOICE PEER
+// --------------------------------------------------
+
+socket.on(
+  "voice:peer-joined",
+  async data => {
+
+    if (!data) {
+      return;
+    }
+
+    if (!data.peerId) {
+      return;
+    }
+
+    peerNames.set(
+      data.peerId,
+      data.peerName ||
+      "Player"
+    );
+
+    renderVoiceParticipants();
+
+    // The new player will receive an offer
+    // from the player who is already in voice.
+    if (voiceEnabled) {
+      await createOffer(
+        data.peerId
+      );
+    }
+  }
+);
+
+// --------------------------------------------------
+// CREATE PEER CONNECTION
+// --------------------------------------------------
+
+function createPeerConnection(
+  peerId
+) {
+
+  if (
+    peerConnections.has(
+      peerId
+    )
+  ) {
+
+    return peerConnections.get(
+      peerId
+    );
+  }
+
+  const pc =
+    new RTCPeerConnection(
+      rtcConfig
+    );
+
+  peerConnections.set(
+    peerId,
+    pc
+  );
+
+  // ----------------------------------------------
+  // SEND MICROPHONE
+  // ----------------------------------------------
+
+  if (localStream) {
+
+    localStream
+      .getTracks()
+      .forEach(
+        track => {
+
+          pc.addTrack(
+            track,
+            localStream
+          );
+        }
+      );
+  }
+
+  // ----------------------------------------------
+  // ICE
+  // ----------------------------------------------
+
+  pc.onicecandidate =
+    event => {
+
+      if (
+        event.candidate
+      ) {
+
+        socket.emit(
+          "voice:ice",
+          {
+            targetId:
+              peerId,
+
+            candidate:
+              event.candidate
+          }
+        );
+      }
+    };
+
+  // ----------------------------------------------
+  // RECEIVE AUDIO
+  // ----------------------------------------------
+
+  pc.ontrack =
+    event => {
+
+      if (
+        !event.streams ||
+        !event.streams[0]
+      ) {
+        return;
+      }
+
+      attachRemoteAudio(
+        peerId,
+        event.streams[0]
+      );
+    };
+
+  // ----------------------------------------------
+  // CONNECTION STATE
+  // ----------------------------------------------
+
+  pc.onconnectionstatechange =
+    () => {
+
+      if (
+        pc.connectionState ===
+        "connected"
+      ) {
+
+        setVoicePersonTalking(
+          peerId,
+          false
+        );
+
+      }
+
+      if (
+        pc.connectionState ===
+        "failed" ||
+        pc.connectionState ===
+        "closed" ||
+        pc.connectionState ===
+        "disconnected"
+      ) {
+
+        removePeer(
+          peerId
+        );
+      }
+    };
+
+  return pc;
+}
+
+// --------------------------------------------------
+// CREATE OFFER
+// --------------------------------------------------
+
+async function createOffer(
+  peerId
+) {
+
+  if (!voiceEnabled) {
+    return;
+  }
+
+  try {
+
+    const pc =
+      createPeerConnection(
+        peerId
+      );
+
+    const offer =
+      await pc.createOffer();
+
+    await pc.setLocalDescription(
+      offer
+    );
+
+    socket.emit(
+      "voice:offer",
+      {
+        targetId:
+          peerId,
+
+        offer:
+          pc.localDescription
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Voice offer error:",
+      err
+    );
+  }
+}
+
+// --------------------------------------------------
+// RECEIVE OFFER
+// --------------------------------------------------
+
+socket.on(
+  "voice:offer",
+  async data => {
+
+    if (!voiceEnabled) {
+      return;
+    }
+
+    if (
+      !data ||
+      !data.fromId ||
+      !data.offer
+    ) {
+      return;
+    }
+
+    const peerId =
+      data.fromId;
+
+    try {
+
+      const pc =
+        createPeerConnection(
+          peerId
+        );
+
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(
+          data.offer
+        )
+      );
+
+      const answer =
+        await pc.createAnswer();
+
+      await pc.setLocalDescription(
+        answer
+      );
+
+      socket.emit(
+        "voice:answer",
+        {
+          targetId:
+            peerId,
+
+          answer:
+            pc.localDescription
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Voice offer handling error:",
+        err
+      );
+    }
+  }
+);
+
+// --------------------------------------------------
+// RECEIVE ANSWER
+// --------------------------------------------------
+
+socket.on(
+  "voice:answer",
+  async data => {
+
+    if (
+      !data ||
+      !data.fromId ||
+      !data.answer
+    ) {
+      return;
+    }
+
+    const pc =
+      peerConnections.get(
+        data.fromId
+      );
+
+    if (!pc) {
+      return;
+    }
+
+    try {
+
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(
+          data.answer
+        )
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Voice answer error:",
+        err
+      );
+    }
+  }
+);
+
+// --------------------------------------------------
+// RECEIVE ICE
+// --------------------------------------------------
+
+socket.on(
+  "voice:ice",
+  async data => {
+
+    if (
+      !data ||
+      !data.fromId ||
+      !data.candidate
+    ) {
+      return;
+    }
+
+    const pc =
+      peerConnections.get(
+        data.fromId
+      );
+
+    if (!pc) {
+      return;
+    }
+
+    try {
+
+      await pc.addIceCandidate(
+        new RTCIceCandidate(
+          data.candidate
+        )
+      );
+
+    } catch (err) {
+
+      console.error(
+        "ICE candidate error:",
+        err
+      );
+    }
+  }
+);
+
+// --------------------------------------------------
+// PEER LEFT
+// --------------------------------------------------
+
+socket.on(
+  "voice:peer-left",
+  data => {
+
+    if (
+      !data ||
+      !data.peerId
+    ) {
+      return;
+    }
+
+    removePeer(
+      data.peerId
+    );
+  }
+);
+
+// --------------------------------------------------
+// REMOVE PEER
+// --------------------------------------------------
+
+function removePeer(
+  peerId
+) {
+
+  const pc =
+    peerConnections.get(
+      peerId
+    );
+
+  if (pc) {
+
+    try {
+      pc.close();
+    } catch (_) {}
+
+    peerConnections.delete(
+      peerId
+    );
+  }
+
+  peerNames.delete(
+    peerId
+  );
+
+  const audio =
+    document.getElementById(
+      "voice-audio-" +
+      peerId
+    );
+
+  if (audio) {
+    audio.remove();
+  }
+
+  renderVoiceParticipants();
+}
+
+// --------------------------------------------------
+// REMOTE AUDIO
+// --------------------------------------------------
+
+function attachRemoteAudio(
+  peerId,
+  stream
+) {
+
+  let audio =
+    document.getElementById(
+      "voice-audio-" +
+      peerId
+    );
+
+  if (!audio) {
+
+    audio =
+      document.createElement(
+        "audio"
+      );
+
+    audio.id =
+      "voice-audio-" +
+      peerId;
+
+    audio.autoplay =
+      true;
+
+    audio.playsInline =
+      true;
+
+    audio.style.display =
+      "none";
+
+    document.body.appendChild(
+      audio
+    );
+  }
+
+  audio.srcObject =
+    stream;
+
+  audio.play()
+    .catch(
+      () => {}
+    );
+}
+
+// --------------------------------------------------
+// VOICE PARTICIPANTS UI
+// --------------------------------------------------
+
+function renderVoiceParticipants() {
+
+  if (!voiceParticipants) {
+    return;
+  }
+
+  voiceParticipants.innerHTML = "";
+
+  if (!voiceEnabled) {
+    return;
+  }
+
+  const me =
+    document.createElement(
+      "span"
+    );
+
+  me.className =
+    "voice-person";
+
+  me.textContent =
+    "🎤 You";
+
+  voiceParticipants.appendChild(
+    me
+  );
+
+  peerNames.forEach(
+    (name, peerId) => {
+
+      if (
+        !peerConnections.has(
+          peerId
+        )
+      ) {
+        return;
+      }
+
+      const person =
+        document.createElement(
+          "span"
+        );
+
+      person.className =
+        "voice-person";
+
+      person.id =
+        "voice-person-" +
+        peerId;
+
+      person.textContent =
+        "🎙️ " +
+        name;
+
+      voiceParticipants.appendChild(
+        person
+      );
+    }
+  );
+}
+
+// --------------------------------------------------
+// VOICE TALKING INDICATOR
+// --------------------------------------------------
+
+function setVoicePersonTalking(
+  peerId,
+  talking
+) {
+
+  const element =
+    document.getElementById(
+      "voice-person-" +
+      peerId
+    );
+
+  if (!element) {
+    return;
+  }
+
+  element.classList.toggle(
+    "talking",
+    Boolean(talking)
+  );
+}
+
+// ==================================================
+// AUTO CLEANUP WHEN PAGE CLOSES
+// ==================================================
+
+window.addEventListener(
+  "beforeunload",
+  () => {
+
+    if (voiceEnabled) {
+
+      socket.emit(
+        "voice:leave"
+      );
+    }
+  }
+);
+
+// ==================================================
+// END
+// ==================================================
