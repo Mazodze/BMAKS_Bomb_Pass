@@ -5,100 +5,766 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BMAKS Bomb Pass</title>
 <link rel="stylesheet" href="/css/style.css">
+
+<style>
+/* ==================================================
+   BMAKS CHAT + VOICE
+   ================================================== */
+
+#chatLauncher {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 9000;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: 50%;
+  background: #111;
+  color: #fff;
+  font-size: 25px;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  display: none;
+}
+
+#chatLauncher.show {
+  display: block;
+}
+
+#chatBadge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 20px;
+  background: #e53935;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#chatBadge.show {
+  display: flex;
+}
+
+#chatPanel {
+  position: fixed;
+  right: 22px;
+  bottom: 92px;
+  z-index: 9001;
+  width: min(360px, calc(100vw - 28px));
+  height: min(560px, calc(100vh - 125px));
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 18px;
+  box-shadow: 0 18px 55px rgba(0,0,0,.3);
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+
+#chatPanel.open {
+  display: flex;
+}
+
+.chat-head {
+  min-height: 64px;
+  padding: 12px 14px;
+  background: #111;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chat-head-title {
+  font-weight: 800;
+}
+
+.chat-head-sub {
+  opacity: .65;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.chat-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+#voiceBar {
+  padding: 9px 12px;
+  background: #f4f4f4;
+  border-bottom: 1px solid #e7e7e7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#voiceButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #e53935;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#voiceButton.off {
+  background: #555;
+}
+
+#voiceStatus {
+  font-size: 12px;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#voiceParticipants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px 12px;
+  min-height: 26px;
+}
+
+.voice-person {
+  font-size: 11px;
+  padding: 4px 7px;
+  border-radius: 20px;
+  background: #ededed;
+}
+
+.voice-person.talking {
+  background: #d7f7df;
+}
+
+#chatMessages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 13px;
+  background: #fafafa;
+}
+
+.chat-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #999;
+  font-size: 13px;
+  text-align: center;
+}
+
+.chat-message {
+  margin-bottom: 11px;
+}
+
+.chat-name {
+  font-size: 11px;
+  font-weight: 800;
+  color: #777;
+  margin-bottom: 3px;
+}
+
+.chat-bubble {
+  display: inline-block;
+  max-width: 88%;
+  padding: 8px 11px;
+  border-radius: 12px 12px 12px 3px;
+  background: #fff;
+  border: 1px solid #e7e7e7;
+  color: #222;
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.chat-message.mine {
+  text-align: right;
+}
+
+.chat-message.mine .chat-name {
+  text-align: right;
+}
+
+.chat-message.mine .chat-bubble {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+  border-radius: 12px 12px 3px 12px;
+  text-align: left;
+}
+
+.chat-time {
+  font-size: 9px;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+#chatForm {
+  display: flex;
+  gap: 7px;
+  padding: 10px;
+  background: #fff;
+  border-top: 1px solid #e7e7e7;
+}
+
+#chatInput {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 11px;
+  padding: 10px 11px;
+  outline: none;
+  font: inherit;
+}
+
+#chatInput:focus {
+  border-color: #999;
+}
+
+#chatSend {
+  width: 46px;
+  border: 0;
+  border-radius: 11px;
+  background: #e53935;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  #chatLauncher {
+    right: 14px;
+    bottom: 14px;
+  }
+
+  #chatPanel {
+    right: 14px;
+    bottom: 82px;
+    width: calc(100vw - 28px);
+  }
+}
+</style>
 </head>
+
 <body>
+
 <div id="app">
+
+  <!-- ==================================================
+       HOME
+       ================================================== -->
+
   <section id="home" class="screen active">
+
     <div class="hero">
+
       <div class="bomb">💣</div>
-      <div class="brand">BMAKS</div>
-      <h1>BOMB PASS</h1>
-      <p>Answer fast. Pass the bomb. Be the last one standing.</p>
+
+      <div class="brand">
+        BMAKS
+      </div>
+
+      <h1>
+        BOMB PASS
+      </h1>
+
+      <p>
+        Answer fast. Pass the bomb. Be the last one standing.
+      </p>
+
     </div>
+
     <div class="panel home-panel">
-      <input id="name" maxlength="20" placeholder="Enter your name" autocomplete="off">
-      <button id="create" class="red">CREATE ROOM</button>
-      <div class="or">OR</div>
-      <input id="code" maxlength="4" placeholder="ROOM CODE" autocomplete="off">
-      <button id="join" class="dark">JOIN ROOM</button>
-      <div id="homeError" class="error"></div>
+
+      <input
+        id="name"
+        maxlength="20"
+        placeholder="Enter your name"
+        autocomplete="off"
+      >
+
+      <button
+        id="create"
+        class="red"
+      >
+        CREATE ROOM
+      </button>
+
+      <div class="or">
+        OR
+      </div>
+
+      <input
+        id="code"
+        maxlength="4"
+        placeholder="ROOM CODE"
+        autocomplete="off"
+      >
+
+      <button
+        id="join"
+        class="dark"
+      >
+        JOIN ROOM
+      </button>
+
+      <div
+        id="homeError"
+        class="error"
+      ></div>
+
     </div>
+
   </section>
+
+
+  <!-- ==================================================
+       LOBBY
+       ================================================== -->
 
   <section id="lobby" class="screen">
+
     <header>
-      <strong>💣 BMAKS</strong>
-      <span>ROOM <b id="roomCode">----</b></span>
+
+      <strong>
+        💣 BMAKS
+      </strong>
+
+      <span>
+        ROOM
+        <b id="roomCode">
+          ----
+        </b>
+      </span>
+
     </header>
+
     <div class="grid">
+
       <div class="panel">
+
         <div class="section-title">
-          <div><small>MULTIPLAYER LOBBY</small><h2>Get ready.</h2></div>
-          <b><i id="count">0</i>/8</b>
+
+          <div>
+            <small>
+              MULTIPLAYER LOBBY
+            </small>
+
+            <h2>
+              Get ready.
+            </h2>
+          </div>
+
+          <b>
+            <i id="count">
+              0
+            </i>/8
+          </b>
+
         </div>
+
         <div id="players"></div>
-        <button id="ready" class="red">I'M READY</button>
-        <button id="start" class="green" hidden>START GAME</button>
-        <button id="leave" class="link">LEAVE ROOM</button>
-        <div id="lobbyError" class="error"></div>
+
+        <button
+          id="ready"
+          class="red"
+        >
+          I'M READY
+        </button>
+
+        <button
+          id="start"
+          class="green"
+          hidden
+        >
+          START GAME
+        </button>
+
+        <button
+          id="leave"
+          class="link"
+        >
+          LEAVE ROOM
+        </button>
+
+        <div
+          id="lobbyError"
+          class="error"
+        ></div>
+
       </div>
+
+
       <div class="panel rules">
-        <h3>💣 HOW TO PLAY</h3>
-        <p>One player has the bomb.</p>
-        <p>Answer the question before the timer hits zero.</p>
-        <p>Correct answer → bomb passes.</p>
-        <p>Wrong answer or timeout → 💥 BOOM.</p>
-        <p>Last player standing wins.</p>
+
+        <h3>
+          💣 HOW TO PLAY
+        </h3>
+
+        <p>
+          One player has the bomb.
+        </p>
+
+        <p>
+          Answer the question before the timer hits zero.
+        </p>
+
+        <p>
+          Correct answer → bomb passes.
+        </p>
+
+        <p>
+          Wrong answer or timeout → 💥 BOOM.
+        </p>
+
+        <p>
+          Last player standing wins.
+        </p>
+
       </div>
+
     </div>
+
   </section>
+
+
+  <!-- ==================================================
+       GAME
+       ================================================== -->
 
   <section id="game" class="screen">
+
     <header>
-      <strong>💣 BMAKS BOMB PASS</strong>
-      <span>ROUND <b id="round">1</b></span>
+
+      <strong>
+        💣 BMAKS BOMB PASS
+      </strong>
+
+      <span>
+        ROUND
+        <b id="round">
+          1
+        </b>
+      </span>
+
     </header>
-    <div id="danger" class="danger"></div>
+
+    <div
+      id="danger"
+      class="danger"
+    ></div>
+
     <div class="game-layout">
+
       <div class="panel game-main">
-        <div class="holder" id="holder">PLAYER HAS THE BOMB</div>
-        <div id="bomb" class="game-bomb">💣</div>
-        <div id="timer" class="timer">00:12</div>
-        <div id="question" class="question">Loading question...</div>
-        <div id="answers" class="answers"></div>
-        <div id="gameMessage" class="game-message"></div>
+
+        <div
+          class="holder"
+          id="holder"
+        >
+          PLAYER HAS THE BOMB
+        </div>
+
+        <div
+          id="bomb"
+          class="game-bomb"
+        >
+          💣
+        </div>
+
+        <div
+          id="timer"
+          class="timer"
+        >
+          00:12
+        </div>
+
+        <div
+          id="question"
+          class="question"
+        >
+          Loading question...
+        </div>
+
+        <div
+          id="answers"
+          class="answers"
+        ></div>
+
+        <div
+          id="gameMessage"
+          class="game-message"
+        ></div>
+
       </div>
+
+
       <aside class="panel scoreboard">
-        <h3>PLAYERS</h3>
-        <div id="scorePlayers"></div>
+
+        <h3>
+          PLAYERS
+        </h3>
+
+        <div
+          id="scorePlayers"
+        ></div>
+
       </aside>
+
     </div>
+
   </section>
 
-  <section id="boom" class="screen center">
-    <div class="explosion">💥</div>
-    <h2 id="boomTitle">BOOM!</h2>
-    <p id="boomText">Player eliminated.</p>
+
+  <!-- ==================================================
+       BOOM
+       ================================================== -->
+
+  <section
+    id="boom"
+    class="screen center"
+  >
+
+    <div class="explosion">
+      💥
+    </div>
+
+    <h2 id="boomTitle">
+      BOOM!
+    </h2>
+
+    <p id="boomText">
+      Player eliminated.
+    </p>
+
   </section>
 
-  <section id="winner" class="screen center">
-    <div class="trophy">🏆</div>
-    <small>WINNER</small>
-    <h2 id="winnerName">PLAYER</h2>
-    <p>LAST PLAYER STANDING</p>
-    <button id="playAgain" class="red">PLAY AGAIN</button>
-    <button id="menu" class="link">MAIN MENU</button>
+
+  <!-- ==================================================
+       WINNER
+       ================================================== -->
+
+  <section
+    id="winner"
+    class="screen center"
+  >
+
+    <div class="trophy">
+      🏆
+    </div>
+
+    <small>
+      WINNER
+    </small>
+
+    <h2 id="winnerName">
+      PLAYER
+    </h2>
+
+    <p>
+      LAST PLAYER STANDING
+    </p>
+
+    <button
+      id="playAgain"
+      class="red"
+    >
+      PLAY AGAIN
+    </button>
+
+    <button
+      id="menu"
+      class="link"
+    >
+      MAIN MENU
+    </button>
+
   </section>
 
-  <section id="starting" class="screen center">
-    <div class="bomb">💣</div>
-    <small>GET READY</small>
-    <h2>GAME STARTING</h2>
-    <div id="startNumber">3</div>
+
+  <!-- ==================================================
+       GAME STARTING
+       ================================================== -->
+
+  <section
+    id="starting"
+    class="screen center"
+  >
+
+    <div class="bomb">
+      💣
+    </div>
+
+    <small>
+      GET READY
+    </small>
+
+    <h2>
+      GAME STARTING
+    </h2>
+
+    <div id="startNumber">
+      3
+    </div>
+
   </section>
+
 </div>
+
+
+<!-- ==================================================
+     PERSISTENT CHAT BUTTON
+     ================================================== -->
+
+<button
+  id="chatLauncher"
+  aria-label="Open chat"
+  title="Chat"
+>
+  💬
+
+  <span id="chatBadge">
+    0
+  </span>
+
+</button>
+
+
+<!-- ==================================================
+     CHAT PANEL
+     ================================================== -->
+
+<div
+  id="chatPanel"
+  aria-hidden="true"
+>
+
+  <div class="chat-head">
+
+    <div>
+
+      <div class="chat-head-title">
+        💬 ROOM CHAT
+      </div>
+
+      <div class="chat-head-sub">
+        Lobby &amp; game voice/text chat
+      </div>
+
+    </div>
+
+    <button
+      id="chatClose"
+      class="chat-close"
+      aria-label="Close chat"
+    >
+      ×
+    </button>
+
+  </div>
+
+
+  <!-- ==================================================
+       VOICE CONTROLS
+       ================================================== -->
+
+  <div id="voiceBar">
+
+    <button
+      id="voiceButton"
+      type="button"
+    >
+      🎤 JOIN VOICE
+    </button>
+
+    <div id="voiceStatus">
+      Voice chat is off
+    </div>
+
+  </div>
+
+
+  <!-- ==================================================
+       VOICE PARTICIPANTS
+       ================================================== -->
+
+  <div id="voiceParticipants"></div>
+
+
+  <!-- ==================================================
+       CHAT MESSAGES
+       ================================================== -->
+
+  <div id="chatMessages">
+
+    <div class="chat-empty">
+      No messages yet.<br>
+      Start the conversation.
+    </div>
+
+  </div>
+
+
+  <!-- ==================================================
+       CHAT INPUT
+       ================================================== -->
+
+  <form id="chatForm">
+
+    <input
+      id="chatInput"
+      maxlength="500"
+      autocomplete="off"
+      placeholder="Type a message..."
+    >
+
+    <button
+      id="chatSend"
+      type="submit"
+      aria-label="Send message"
+    >
+      ➤
+    </button>
+
+  </form>
+
+</div>
+
+
+<!-- ==================================================
+     VOICE AUDIO
+     ================================================== -->
+
+<audio
+  id="voiceAudio"
+  autoplay
+></audio>
+
+
 <div id="toast"></div>
+
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/game.js"></script>
+
 </body>
 </html>
