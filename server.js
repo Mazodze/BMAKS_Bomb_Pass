@@ -5,7 +5,6 @@ const crypto = require("crypto");
 const QUESTIONS = require("./questions");
 
 const app = express();
-
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -31,6 +30,9 @@ const MAX_PLAYERS = 8;
 
 const MAX_CHAT_MESSAGES = 100;
 const MAX_CHAT_LENGTH = 500;
+
+const MAX_VOICE_NOTE_SIZE = 2 * 1024 * 1024;
+const MAX_VOICE_NOTE_DURATION = 60000;
 
 // ==================================================
 // ROOM HELPERS
@@ -165,7 +167,7 @@ function clearRoomTimer(room) {
 }
 
 // ==================================================
-// SEND CURRENT GAME STATE
+// SEND GAME STATE
 // ==================================================
 
 function sendGameState(room) {
@@ -200,7 +202,7 @@ function sendGameState(room) {
 }
 
 // ==================================================
-// START NEW BOMB CYCLE
+// START BOMB CYCLE
 // ==================================================
 
 function startBombCycle(room, holderId) {
@@ -305,7 +307,6 @@ function startGame(room) {
 
   room.players.forEach(
     player => {
-
       player.eliminated =
         false;
 
@@ -364,10 +365,8 @@ function eliminate(
     "game:boom",
     {
       playerId,
-
       playerName:
         player.name,
-
       reason
     }
   );
@@ -416,7 +415,15 @@ function nextHolder(
   room.question =
     chooseQuestion(room);
 
+  room.bombStartedAt =
+    Date.now();
+
   sendGameState(room);
+
+  startBombCycle(
+    room,
+    next.id
+  );
 }
 
 // ==================================================
@@ -613,16 +620,6 @@ function leaveRoom(socket) {
 
   socket.leave(code);
 
-  // Tell other clients to remove this
-  // player's voice connection.
-  socket.to(code).emit(
-    "voice:peer-left",
-    {
-      peerId:
-        socket.id
-    }
-  );
-
   if (room.players.size === 0) {
 
     clearRoomTimer(room);
@@ -668,13 +665,23 @@ function leaveRoom(socket) {
 
     } else if (wasHolder) {
 
+      clearRoomTimer(room);
+
       room.bombHolder =
         active[0].id;
 
       room.question =
         chooseQuestion(room);
 
+      room.bombStartedAt =
+        Date.now();
+
       sendGameState(room);
+
+      startBombCycle(
+        room,
+        active[0].id
+      );
 
     } else {
 
@@ -756,10 +763,6 @@ io.on(
           winnerId:
             null,
 
-          // ========================================
-          // CHAT HISTORY
-          // ========================================
-
           chat:
             []
         };
@@ -798,7 +801,6 @@ io.on(
           }
         );
 
-        // Send existing room chat.
         socket.emit(
           "chat:history",
           room.chat
@@ -915,23 +917,9 @@ io.on(
           }
         );
 
-        // Send existing chat history.
         socket.emit(
           "chat:history",
           room.chat
-        );
-
-        // Tell the room about the new
-        // voice participant.
-        socket.to(normalized).emit(
-          "voice:peer-joined",
-          {
-            peerId:
-              socket.id,
-
-            peerName:
-              playerName
-          }
         );
 
         emitRoom(room);
@@ -1130,6 +1118,8 @@ io.on(
             return;
           }
 
+          clearRoomTimer(room);
+
           io.to(
             room.code
           ).emit(
@@ -1234,6 +1224,9 @@ io.on(
           id:
             crypto.randomUUID(),
 
+          type:
+            "text",
+
           playerId:
             socket.id,
 
@@ -1255,6 +1248,7 @@ io.on(
           room.chat.length >
           MAX_CHAT_MESSAGES
         ) {
+
           room.chat =
             room.chat.slice(
               -MAX_CHAT_MESSAGES
@@ -1269,140 +1263,26 @@ io.on(
     );
 
     // ==============================================
-    // VOICE CHAT
+    // VOICE NOTE
     // ==============================================
     //
-    // Socket.IO is only used for WebRTC
-    // signaling.
+    // IMPORTANT:
+    // The client sends "chat:voice".
     //
-    // Actual microphone audio travels
-    // peer-to-peer between browsers.
+    // The server converts the received audio
+    // into a Data URL before sending it back.
+    //
+    // This matches the game.js voice system.
     //
     // ==============================================
 
     socket.on(
-      "voice:offer",
-      ({ targetId, offer } = {}) => {
-
-        if (
-          !targetId ||
-          !offer
-        ) {
-          return;
-        }
-
-        const room =
-          rooms.get(
-            socket.data.roomCode
-          );
-
-        if (!room) {
-          return;
-        }
-
-        if (
-          !room.players.has(
-            targetId
-          )
-        ) {
-          return;
-        }
-
-        io.to(targetId).emit(
-          "voice:offer",
-          {
-            fromId:
-              socket.id,
-
-            offer
-          }
-        );
-      }
-    );
-
-    socket.on(
-      "voice:answer",
-      ({ targetId, answer } = {}) => {
-
-        if (
-          !targetId ||
-          !answer
-        ) {
-          return;
-        }
-
-        const room =
-          rooms.get(
-            socket.data.roomCode
-          );
-
-        if (!room) {
-          return;
-        }
-
-        if (
-          !room.players.has(
-            targetId
-          )
-        ) {
-          return;
-        }
-
-        io.to(targetId).emit(
-          "voice:answer",
-          {
-            fromId:
-              socket.id,
-
-            answer
-          }
-        );
-      }
-    );
-
-    socket.on(
-      "voice:ice",
-      ({ targetId, candidate } = {}) => {
-
-        if (
-          !targetId ||
-          !candidate
-        ) {
-          return;
-        }
-
-        const room =
-          rooms.get(
-            socket.data.roomCode
-          );
-
-        if (!room) {
-          return;
-        }
-
-        if (
-          !room.players.has(
-            targetId
-          )
-        ) {
-          return;
-        }
-
-        io.to(targetId).emit(
-          "voice:ice",
-          {
-            fromId:
-              socket.id,
-
-            candidate
-          }
-        );
-      }
-    );
-
-    socket.on(
-      "voice:join",
-      () => {
+      "chat:voice",
+      ({
+        audio,
+        mimeType,
+        duration
+      } = {}) => {
 
         const room =
           rooms.get(
@@ -1422,56 +1302,266 @@ io.on(
           return;
         }
 
-        socket.to(room.code).emit(
-          "voice:peer-joined",
-          {
-            peerId:
-              socket.id,
+        if (!audio) {
+          return;
+        }
 
-            peerName:
-              player.name
+        let safeDuration =
+          Number(duration);
+
+        if (
+          !Number.isFinite(
+            safeDuration
+          )
+        ) {
+          return socket.emit(
+            "voice-note:error",
+            "Invalid voice-note duration."
+          );
+        }
+
+        // The client sends seconds.
+        // The server also accepts milliseconds
+        // in case another client sends them.
+
+        if (
+          safeDuration > 1000
+        ) {
+          safeDuration =
+            safeDuration / 1000;
+        }
+
+        safeDuration =
+          Math.floor(
+            safeDuration
+          );
+
+        if (
+          safeDuration <= 0 ||
+          safeDuration >
+            MAX_VOICE_NOTE_DURATION / 1000
+        ) {
+
+          return socket.emit(
+            "voice-note:error",
+            "Voice note must be between 1 and 60 seconds."
+          );
+        }
+
+        let buffer;
+
+        try {
+
+          // ==========================================
+          // DATA URL
+          // ==========================================
+
+          if (
+            typeof audio ===
+            "string"
+          ) {
+
+            let base64Data =
+              audio;
+
+            if (
+              audio.includes(",")
+            ) {
+
+              base64Data =
+                audio.split(",")[1];
+            }
+
+            buffer =
+              Buffer.from(
+                base64Data,
+                "base64"
+              );
           }
+
+          // ==========================================
+          // BUFFER
+          // ==========================================
+
+          else if (
+            Buffer.isBuffer(audio)
+          ) {
+
+            buffer =
+              audio;
+          }
+
+          // ==========================================
+          // ARRAY BUFFER
+          // ==========================================
+
+          else if (
+            audio instanceof ArrayBuffer
+          ) {
+
+            buffer =
+              Buffer.from(audio);
+          }
+
+          // ==========================================
+          // SOCKET.IO BUFFER OBJECT
+          // ==========================================
+
+          else if (
+            audio &&
+            audio.type === "Buffer" &&
+            Array.isArray(audio.data)
+          ) {
+
+            buffer =
+              Buffer.from(
+                audio.data
+              );
+          }
+
+          // ==========================================
+          // ARRAY
+          // ==========================================
+
+          else if (
+            Array.isArray(audio)
+          ) {
+
+            buffer =
+              Buffer.from(audio);
+          }
+
+          else {
+
+            return socket.emit(
+              "voice-note:error",
+              "Invalid voice note."
+            );
+          }
+
+        } catch (err) {
+
+          console.error(
+            "Voice note conversion error:",
+            err
+          );
+
+          return socket.emit(
+            "voice-note:error",
+            "Could not process voice note."
+          );
+        }
+
+        if (
+          !buffer ||
+          buffer.length === 0
+        ) {
+
+          return socket.emit(
+            "voice-note:error",
+            "Voice note is empty."
+          );
+        }
+
+        if (
+          buffer.length >
+          MAX_VOICE_NOTE_SIZE
+        ) {
+
+          return socket.emit(
+            "voice-note:error",
+            "Voice note is too large. Maximum size is 2 MB."
+          );
+        }
+
+        const safeMimeType =
+          typeof mimeType ===
+          "string" &&
+          mimeType.length > 0
+            ? mimeType.slice(0, 100)
+            : "audio/webm";
+
+        // ==========================================
+        // CONVERT TO DATA URL
+        // ==========================================
+
+        const dataUrl =
+          `data:${safeMimeType};base64,${buffer.toString("base64")}`;
+
+        const voiceMessage = {
+          id:
+            crypto.randomUUID(),
+
+          type:
+            "voice",
+
+          playerId:
+            socket.id,
+
+          playerName:
+            player.name,
+
+          audio:
+            dataUrl,
+
+          mimeType:
+            safeMimeType,
+
+          duration:
+            safeDuration,
+
+          time:
+            Date.now()
+        };
+
+        // ==========================================
+        // SAVE VOICE MESSAGE
+        // ==========================================
+
+        room.chat.push(
+          voiceMessage
         );
 
-        socket.emit(
-          "voice:participants",
-          [...room.players.values()]
-            .filter(
-              player =>
-                player.id !==
-                socket.id
-            )
-            .map(
-              player => ({
-                peerId:
-                  player.id,
+        if (
+          room.chat.length >
+          MAX_CHAT_MESSAGES
+        ) {
 
-                peerName:
-                  player.name
-              })
-            )
+          room.chat =
+            room.chat.slice(
+              -MAX_CHAT_MESSAGES
+            );
+        }
+
+        // ==========================================
+        // SEND TO EVERY PLAYER
+        // ==========================================
+
+        io.to(room.code).emit(
+          "chat:voice",
+          voiceMessage
         );
       }
     );
 
+    // ==============================================
+    // VOICE NOTE ERROR
+    // ==============================================
+
     socket.on(
-      "voice:leave",
-      () => {
+      "voice-note:error",
+      message => {
 
-        const code =
-          socket.data.roomCode;
+        if (
+          typeof message ===
+          "string"
+        ) {
 
-        if (!code) {
-          return;
+          socket.emit(
+            "voice-note:error",
+            message.slice(0, 200)
+          );
         }
-
-        socket.to(code).emit(
-          "voice:peer-left",
-          {
-            peerId:
-              socket.id
-          }
-        );
       }
     );
 
