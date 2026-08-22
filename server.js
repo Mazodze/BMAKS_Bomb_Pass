@@ -26,6 +26,13 @@ const BOMB_SECONDS = 60;
 const MAX_PLAYERS = 8;
 
 // ==================================================
+// CHAT SETTINGS
+// ==================================================
+
+const MAX_CHAT_MESSAGES = 100;
+const MAX_CHAT_LENGTH = 500;
+
+// ==================================================
 // ROOM HELPERS
 // ==================================================
 
@@ -47,6 +54,13 @@ function cleanName(value) {
     .trim()
     .replace(/\s+/g, " ")
     .slice(0, 20);
+}
+
+function cleanChatMessage(value) {
+  return String(value || "")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .slice(0, MAX_CHAT_LENGTH);
 }
 
 function activePlayers(room) {
@@ -175,17 +189,11 @@ function sendGameState(room) {
     "game:state",
     {
       round: room.round,
-
       holderId: holder.id,
-
       holderName: holder.name,
-
       question: room.question.q,
-
       answers: room.question.a,
-
       remainingMs: remaining,
-
       players: publicPlayers(room)
     }
   );
@@ -526,17 +534,6 @@ function finishGame(
 // ==================================================
 // RESET GAME TO LOBBY
 // ==================================================
-//
-// IMPORTANT:
-//
-// - Players stay in the same room.
-// - The room code stays the same.
-// - Nobody has to enter the code again.
-// - Everyone goes back to the lobby.
-// - Everyone becomes NOT READY.
-// - The host remains the host.
-// - Any player can press PLAY AGAIN.
-//
 
 function resetGameToLobby(room) {
   clearRoomTimer(room);
@@ -573,7 +570,6 @@ function resetGameToLobby(room) {
     }
   );
 
-  // Tell everyone to update their screen.
   io.to(room.code).emit(
     "lobby:returned",
     {
@@ -582,7 +578,6 @@ function resetGameToLobby(room) {
     }
   );
 
-  // Send the new lobby state.
   emitRoom(room);
 }
 
@@ -617,6 +612,16 @@ function leaveRoom(socket) {
   );
 
   socket.leave(code);
+
+  // Tell other clients to remove this
+  // player's voice connection.
+  socket.to(code).emit(
+    "voice:peer-left",
+    {
+      peerId:
+        socket.id
+    }
+  );
 
   if (room.players.size === 0) {
 
@@ -749,7 +754,14 @@ io.on(
             [],
 
           winnerId:
-            null
+            null,
+
+          // ========================================
+          // CHAT HISTORY
+          // ========================================
+
+          chat:
+            []
         };
 
         room.players.set(
@@ -784,6 +796,12 @@ io.on(
           {
             code
           }
+        );
+
+        // Send existing room chat.
+        socket.emit(
+          "chat:history",
+          room.chat
         );
 
         emitRoom(room);
@@ -894,6 +912,25 @@ io.on(
           {
             code:
               normalized
+          }
+        );
+
+        // Send existing chat history.
+        socket.emit(
+          "chat:history",
+          room.chat
+        );
+
+        // Tell the room about the new
+        // voice participant.
+        socket.to(normalized).emit(
+          "voice:peer-joined",
+          {
+            peerId:
+              socket.id,
+
+            peerName:
+              playerName
           }
         );
 
@@ -1079,10 +1116,6 @@ io.on(
           );
         }
 
-        // ==========================================
-        // CORRECT ANSWER
-        // ==========================================
-
         if (
           answer ===
           room.question.c
@@ -1129,13 +1162,7 @@ io.on(
 
           }, 700);
 
-        }
-
-        // ==========================================
-        // WRONG ANSWER
-        // ==========================================
-
-        else {
+        } else {
 
           newQuestion(room);
         }
@@ -1144,16 +1171,6 @@ io.on(
 
     // ==============================================
     // PLAY AGAIN
-    // ==============================================
-    //
-    // ANY PLAYER CAN PRESS PLAY AGAIN.
-    //
-    // The room does NOT get deleted.
-    // Players do NOT leave.
-    // The room code stays the same.
-    //
-    // Everyone is sent back to the lobby.
-    //
     // ==============================================
 
     socket.on(
@@ -1177,6 +1194,284 @@ io.on(
         }
 
         resetGameToLobby(room);
+      }
+    );
+
+    // ==============================================
+    // TEXT CHAT
+    // ==============================================
+
+    socket.on(
+      "chat:send",
+      ({ message } = {}) => {
+
+        const room =
+          rooms.get(
+            socket.data.roomCode
+          );
+
+        if (!room) {
+          return;
+        }
+
+        const player =
+          room.players.get(
+            socket.id
+          );
+
+        if (!player) {
+          return;
+        }
+
+        const text =
+          cleanChatMessage(message);
+
+        if (!text) {
+          return;
+        }
+
+        const chatMessage = {
+          id:
+            crypto.randomUUID(),
+
+          playerId:
+            socket.id,
+
+          playerName:
+            player.name,
+
+          message:
+            text,
+
+          time:
+            Date.now()
+        };
+
+        room.chat.push(
+          chatMessage
+        );
+
+        if (
+          room.chat.length >
+          MAX_CHAT_MESSAGES
+        ) {
+          room.chat =
+            room.chat.slice(
+              -MAX_CHAT_MESSAGES
+            );
+        }
+
+        io.to(room.code).emit(
+          "chat:message",
+          chatMessage
+        );
+      }
+    );
+
+    // ==============================================
+    // VOICE CHAT
+    // ==============================================
+    //
+    // Socket.IO is only used for WebRTC
+    // signaling.
+    //
+    // Actual microphone audio travels
+    // peer-to-peer between browsers.
+    //
+    // ==============================================
+
+    socket.on(
+      "voice:offer",
+      ({ targetId, offer } = {}) => {
+
+        if (
+          !targetId ||
+          !offer
+        ) {
+          return;
+        }
+
+        const room =
+          rooms.get(
+            socket.data.roomCode
+          );
+
+        if (!room) {
+          return;
+        }
+
+        if (
+          !room.players.has(
+            targetId
+          )
+        ) {
+          return;
+        }
+
+        io.to(targetId).emit(
+          "voice:offer",
+          {
+            fromId:
+              socket.id,
+
+            offer
+          }
+        );
+      }
+    );
+
+    socket.on(
+      "voice:answer",
+      ({ targetId, answer } = {}) => {
+
+        if (
+          !targetId ||
+          !answer
+        ) {
+          return;
+        }
+
+        const room =
+          rooms.get(
+            socket.data.roomCode
+          );
+
+        if (!room) {
+          return;
+        }
+
+        if (
+          !room.players.has(
+            targetId
+          )
+        ) {
+          return;
+        }
+
+        io.to(targetId).emit(
+          "voice:answer",
+          {
+            fromId:
+              socket.id,
+
+            answer
+          }
+        );
+      }
+    );
+
+    socket.on(
+      "voice:ice",
+      ({ targetId, candidate } = {}) => {
+
+        if (
+          !targetId ||
+          !candidate
+        ) {
+          return;
+        }
+
+        const room =
+          rooms.get(
+            socket.data.roomCode
+          );
+
+        if (!room) {
+          return;
+        }
+
+        if (
+          !room.players.has(
+            targetId
+          )
+        ) {
+          return;
+        }
+
+        io.to(targetId).emit(
+          "voice:ice",
+          {
+            fromId:
+              socket.id,
+
+            candidate
+          }
+        );
+      }
+    );
+
+    socket.on(
+      "voice:join",
+      () => {
+
+        const room =
+          rooms.get(
+            socket.data.roomCode
+          );
+
+        if (!room) {
+          return;
+        }
+
+        const player =
+          room.players.get(
+            socket.id
+          );
+
+        if (!player) {
+          return;
+        }
+
+        socket.to(room.code).emit(
+          "voice:peer-joined",
+          {
+            peerId:
+              socket.id,
+
+            peerName:
+              player.name
+          }
+        );
+
+        socket.emit(
+          "voice:participants",
+          [...room.players.values()]
+            .filter(
+              player =>
+                player.id !==
+                socket.id
+            )
+            .map(
+              player => ({
+                peerId:
+                  player.id,
+
+                peerName:
+                  player.name
+              })
+            )
+        );
+      }
+    );
+
+    socket.on(
+      "voice:leave",
+      () => {
+
+        const code =
+          socket.data.roomCode;
+
+        if (!code) {
+          return;
+        }
+
+        socket.to(code).emit(
+          "voice:peer-left",
+          {
+            peerId:
+              socket.id
+          }
+        );
       }
     );
 
