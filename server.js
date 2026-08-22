@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const QUESTIONS = require("./questions");
 
 const app = express();
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -21,7 +22,7 @@ const rooms = new Map();
 // GAME SETTINGS
 // ==================================================
 
-const BOMB_SECONDS = 60;
+const BOMB_SECONDS = 80;
 const MAX_PLAYERS = 8;
 
 // ==================================================
@@ -31,7 +32,10 @@ const MAX_PLAYERS = 8;
 const MAX_CHAT_MESSAGES = 100;
 const MAX_CHAT_LENGTH = 500;
 
+// Maximum voice-note size: 2 MB
 const MAX_VOICE_NOTE_SIZE = 2 * 1024 * 1024;
+
+// Maximum voice-note duration: 60 seconds
 const MAX_VOICE_NOTE_DURATION = 60000;
 
 // ==================================================
@@ -167,7 +171,7 @@ function clearRoomTimer(room) {
 }
 
 // ==================================================
-// SEND GAME STATE
+// SEND CURRENT GAME STATE
 // ==================================================
 
 function sendGameState(room) {
@@ -202,7 +206,7 @@ function sendGameState(room) {
 }
 
 // ==================================================
-// START BOMB CYCLE
+// START NEW BOMB CYCLE
 // ==================================================
 
 function startBombCycle(room, holderId) {
@@ -307,6 +311,7 @@ function startGame(room) {
 
   room.players.forEach(
     player => {
+
       player.eliminated =
         false;
 
@@ -415,15 +420,7 @@ function nextHolder(
   room.question =
     chooseQuestion(room);
 
-  room.bombStartedAt =
-    Date.now();
-
   sendGameState(room);
-
-  startBombCycle(
-    room,
-    next.id
-  );
 }
 
 // ==================================================
@@ -665,8 +662,6 @@ function leaveRoom(socket) {
 
     } else if (wasHolder) {
 
-      clearRoomTimer(room);
-
       room.bombHolder =
         active[0].id;
 
@@ -677,11 +672,6 @@ function leaveRoom(socket) {
         Date.now();
 
       sendGameState(room);
-
-      startBombCycle(
-        room,
-        active[0].id
-      );
 
     } else {
 
@@ -1118,8 +1108,6 @@ io.on(
             return;
           }
 
-          clearRoomTimer(room);
-
           io.to(
             room.code
           ).emit(
@@ -1263,21 +1251,19 @@ io.on(
     );
 
     // ==============================================
-    // VOICE NOTE
+    // WHATSAPP-STYLE VOICE NOTE
     // ==============================================
     //
-    // IMPORTANT:
-    // The client sends "chat:voice".
+    // This is NOT live voice chat.
     //
-    // The server converts the received audio
-    // into a Data URL before sending it back.
-    //
-    // This matches the game.js voice system.
+    // The client records audio first.
+    // When recording stops, the complete
+    // voice note is sent here.
     //
     // ==============================================
 
     socket.on(
-      "chat:voice",
+      "voice-note:send",
       ({
         audio,
         mimeType,
@@ -1306,40 +1292,16 @@ io.on(
           return;
         }
 
-        let safeDuration =
+        const safeDuration =
           Number(duration);
 
         if (
           !Number.isFinite(
             safeDuration
-          )
-        ) {
-          return socket.emit(
-            "voice-note:error",
-            "Invalid voice-note duration."
-          );
-        }
-
-        // The client sends seconds.
-        // The server also accepts milliseconds
-        // in case another client sends them.
-
-        if (
-          safeDuration > 1000
-        ) {
-          safeDuration =
-            safeDuration / 1000;
-        }
-
-        safeDuration =
-          Math.floor(
-            safeDuration
-          );
-
-        if (
+          ) ||
           safeDuration <= 0 ||
           safeDuration >
-            MAX_VOICE_NOTE_DURATION / 1000
+            MAX_VOICE_NOTE_DURATION
         ) {
 
           return socket.emit(
@@ -1352,86 +1314,46 @@ io.on(
 
         try {
 
-          // ==========================================
-          // DATA URL
-          // ==========================================
-
           if (
-            typeof audio ===
-            "string"
-          ) {
-
-            let base64Data =
-              audio;
-
-            if (
-              audio.includes(",")
-            ) {
-
-              base64Data =
-                audio.split(",")[1];
-            }
-
-            buffer =
-              Buffer.from(
-                base64Data,
-                "base64"
-              );
-          }
-
-          // ==========================================
-          // BUFFER
-          // ==========================================
-
-          else if (
-            Buffer.isBuffer(audio)
+            Buffer.isBuffer(
+              audio
+            )
           ) {
 
             buffer =
               audio;
-          }
 
-          // ==========================================
-          // ARRAY BUFFER
-          // ==========================================
-
-          else if (
+          } else if (
             audio instanceof ArrayBuffer
           ) {
 
             buffer =
               Buffer.from(audio);
-          }
 
-          // ==========================================
-          // SOCKET.IO BUFFER OBJECT
-          // ==========================================
-
-          else if (
+          } else if (
             audio &&
-            audio.type === "Buffer" &&
-            Array.isArray(audio.data)
+            audio.type ===
+            "Buffer" &&
+            Array.isArray(
+              audio.data
+            )
           ) {
 
             buffer =
               Buffer.from(
                 audio.data
               );
-          }
 
-          // ==========================================
-          // ARRAY
-          // ==========================================
-
-          else if (
+          } else if (
             Array.isArray(audio)
           ) {
 
             buffer =
-              Buffer.from(audio);
-          }
+              Buffer.from(
+                audio
+              );
 
-          else {
+          } else {
 
             return socket.emit(
               "voice-note:error",
@@ -1476,17 +1398,9 @@ io.on(
 
         const safeMimeType =
           typeof mimeType ===
-          "string" &&
-          mimeType.length > 0
+          "string"
             ? mimeType.slice(0, 100)
             : "audio/webm";
-
-        // ==========================================
-        // CONVERT TO DATA URL
-        // ==========================================
-
-        const dataUrl =
-          `data:${safeMimeType};base64,${buffer.toString("base64")}`;
 
         const voiceMessage = {
           id:
@@ -1502,66 +1416,24 @@ io.on(
             player.name,
 
           audio:
-            dataUrl,
+            buffer,
 
           mimeType:
             safeMimeType,
 
           duration:
-            safeDuration,
+            Math.round(
+              safeDuration
+            ),
 
           time:
             Date.now()
         };
 
-        // ==========================================
-        // SAVE VOICE MESSAGE
-        // ==========================================
-
-        room.chat.push(
-          voiceMessage
-        );
-
-        if (
-          room.chat.length >
-          MAX_CHAT_MESSAGES
-        ) {
-
-          room.chat =
-            room.chat.slice(
-              -MAX_CHAT_MESSAGES
-            );
-        }
-
-        // ==========================================
-        // SEND TO EVERY PLAYER
-        // ==========================================
-
         io.to(room.code).emit(
           "chat:voice",
           voiceMessage
         );
-      }
-    );
-
-    // ==============================================
-    // VOICE NOTE ERROR
-    // ==============================================
-
-    socket.on(
-      "voice-note:error",
-      message => {
-
-        if (
-          typeof message ===
-          "string"
-        ) {
-
-          socket.emit(
-            "voice-note:error",
-            message.slice(0, 200)
-          );
-        }
       }
     );
 
